@@ -1,0 +1,123 @@
+---
+import Base from '../layouts/Base.astro';
+import { getSnapshot } from '../lib/store';
+import { pushConfigured } from '../lib/push';
+
+const snap = await getSnapshot();
+const meId = Astro.locals.teamId ?? 0;
+const me = snap?.teams.find((t) => t.id === meId) ?? null;
+const configured = pushConfigured();
+const back = encodeURIComponent('/alerts');
+---
+
+<Base title="Alerts" noCache>
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Notifications</div>
+      <h1>Alerts</h1>
+      <p>Get a notification on this device when something happens on the site. No email, no account — it uses your browser's built-in notifications. Turn it on per device (phone, laptop) and choose what you want to hear about.</p>
+    </div>
+  </div>
+
+  {!configured ? (
+    <div class="empty">Alerts aren't configured on the server yet.</div>
+  ) : !me ? (
+    <div class="card">
+      <p class="muted" style="margin:0">Alerts are tied to a team so we can skip your own posts. <a href={`/api/identity?clear=1&next=${back}`}>Pick your team</a> first.</p>
+    </div>
+  ) : (
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-head"><h2>This device</h2><span class="pill" id="push-state">checking…</span></div>
+        <p class="small muted" id="push-help">Alerts go to <b>{me.name}</b> on this device.</p>
+        <div class="flex" style="gap:10px">
+          <button class="btn" id="push-on">Turn on alerts</button>
+          <button class="btn secondary" id="push-off" hidden>Turn off</button>
+          <button class="btn sm secondary" id="push-test" hidden>Send a test</button>
+          <span class="tiny" id="push-msg"></span>
+        </div>
+        <div id="ios-note" class="msg" hidden style="margin-top:14px;background:rgba(245,196,81,.12);color:#ffe4a1">
+          <b>iPhone / iPad:</b> Safari only allows alerts for sites saved to your Home Screen. Tap the <b>Share</b> button, choose <b>Add to Home Screen</b>, then open the site from that icon and come back here to turn alerts on.
+        </div>
+      </div>
+
+      <div class="card" id="prefs-card" hidden>
+        <div class="card-head"><h2>What to alert me about</h2></div>
+        <label class="flex" style="gap:10px;cursor:pointer;margin-bottom:12px"><input type="checkbox" id="pref-trades" checked style="width:auto" /> <span><b>Trade block posts</b><br /><span class="tiny dim">Someone puts players on the block</span></span></label>
+        <label class="flex" style="gap:10px;cursor:pointer;margin-bottom:12px"><input type="checkbox" id="pref-replies" checked style="width:auto" /> <span><b>Replies to my posts</b><br /><span class="tiny dim">Someone comments on a trade post I made</span></span></label>
+        <label class="flex" style="gap:10px;cursor:pointer;margin-bottom:12px"><input type="checkbox" id="pref-chat" checked style="width:auto" /> <span><b>League chat</b><br /><span class="tiny dim">New messages — at most one alert every 90 seconds so a busy chat doesn't buzz you nonstop</span></span></label>
+        <div class="flex"><button class="btn sm" id="prefs-save">Save</button><span class="tiny" id="prefs-msg"></span></div>
+      </div>
+    </div>
+  )}
+
+  <script is:inline>
+    (function () {
+      const $ = (id) => document.getElementById(id);
+      if (!$('push-on')) return;
+      const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+      const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+      const state = (text, cls) => { const el = $('push-state'); el.textContent = text; el.className = 'pill ' + (cls || ''); };
+      const flash = (id, text, ok) => { const el = $(id); el.textContent = text; el.className = 'tiny ' + (ok ? 'green' : 'red'); };
+      async function api(action, body) {
+        const res = await fetch('/api/push/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        return data;
+      }
+      function b64ToU8(b64) { const pad = '='.repeat((4 - (b64.length % 4)) % 4); const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, (c) => c.charCodeAt(0)); }
+
+      if (!supported) {
+        state('not available', 'red');
+        $('push-on').disabled = true;
+        if (isIOS && !standalone) $('ios-note').hidden = false;
+        else $('push-help').textContent = 'This browser does not support web push notifications. Try Chrome, Edge, Firefox or Safari 16.4+.';
+        return;
+      }
+      if (isIOS && !standalone) $('ios-note').hidden = false;
+
+      let reg, sub;
+      async function refresh() {
+        reg = await navigator.serviceWorker.register('/sw.js');
+        sub = await reg.pushManager.getSubscription();
+        if (Notification.permission === 'denied') { state('blocked in browser settings', 'red'); $('push-on').disabled = true; return; }
+        if (sub) {
+          const st = await api('status', { endpoint: sub.endpoint });
+          if (st.subscribed) {
+            state('on', 'green'); $('push-on').hidden = true; $('push-off').hidden = false; $('push-test').hidden = false; $('prefs-card').hidden = false;
+            $('pref-trades').checked = st.prefs.trades; $('pref-replies').checked = st.prefs.replies; $('pref-chat').checked = st.prefs.chat;
+            return;
+          }
+        }
+        state('off', ''); $('push-on').hidden = false; $('push-off').hidden = true; $('push-test').hidden = true; $('prefs-card').hidden = true;
+      }
+      $('push-on').addEventListener('click', async () => {
+        $('push-on').disabled = true;
+        try {
+          const perm = await Notification.requestPermission();
+          if (perm !== 'granted') throw new Error('Permission was not granted.');
+          const { publicKey } = await api('config');
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(publicKey) });
+          await api('subscribe', { subscription: sub.toJSON(), prefs: { trades: true, replies: true, chat: true } });
+          flash('push-msg', 'Alerts are on.', true);
+          await refresh();
+        } catch (e) { flash('push-msg', e.message, false); }
+        $('push-on').disabled = false;
+      });
+      $('push-off').addEventListener('click', async () => {
+        try { if (sub) { await api('unsubscribe', { endpoint: sub.endpoint }); await sub.unsubscribe(); } flash('push-msg', 'Alerts are off on this device.', true); await refresh(); }
+        catch (e) { flash('push-msg', e.message, false); }
+      });
+      $('push-test').addEventListener('click', async () => {
+        try { const r = await api('test', { endpoint: sub.endpoint }); flash('push-msg', r.ok ? 'Test sent — check your notifications.' : 'Could not send a test.', r.ok); }
+        catch (e) { flash('push-msg', e.message, false); }
+      });
+      $('prefs-save').addEventListener('click', async () => {
+        try { await api('prefs', { endpoint: sub.endpoint, prefs: { trades: $('pref-trades').checked, replies: $('pref-replies').checked, chat: $('pref-chat').checked } }); flash('prefs-msg', 'Saved.', true); }
+        catch (e) { flash('prefs-msg', e.message, false); }
+      });
+      refresh().catch((e) => { state('error', 'red'); flash('push-msg', e.message, false); });
+    })();
+  </script>
+</Base>

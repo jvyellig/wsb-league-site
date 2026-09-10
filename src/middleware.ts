@@ -3,7 +3,7 @@ import { defineMiddleware } from 'astro:middleware';
 export const TEAM_COOKIE = 'wsb_team';
 
 /** Paths that never require picking a team. */
-const EXEMPT = [/^\/whoami/, /^\/api\//, /^\/logos\//, /^\/admin/, /^\/favicon/, /^\/_/];
+const EXEMPT = [/^\/whoami/, /^\/api\//, /^\/logos\//, /^\/admin/, /^\/favicon/, /^\/_/, /^\/sw\.js$/, /^\/manifest\.webmanifest$/, /^\/icon-/];
 
 /**
  * First visit: send people to the "who are you?" screen. The choice is stored in a cookie for a year

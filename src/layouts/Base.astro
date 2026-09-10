@@ -27,6 +27,7 @@ const nav = [
   ['/draft', 'Draft'],
   ['/trade-block', 'Trade Block'],
   ['/chat', 'Chat'],
+  ['/alerts', '🔔'],
 ];
 if (me) nav.splice(1, 0, [`/teams/${me.id}`, 'My Team']);
 const isActive = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
@@ -51,6 +52,11 @@ if (!noCache) {
     <meta name="description" content={description} />
     <meta name="robots" content="noindex" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="WSB League" />
+    <meta name="theme-color" content="#0a0e1a" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />

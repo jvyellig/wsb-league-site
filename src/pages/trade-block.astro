@@ -138,6 +138,12 @@ const espnTrades = (snap?.transactions ?? [])
       let msgTimer;
       function alertMsg(text, ok) { const el = $('post-msg'); el.textContent = text; el.className = 'tiny ' + (ok ? 'green' : 'red'); clearTimeout(msgTimer); msgTimer = setTimeout(() => (el.textContent = ''), 4000); }
 
+      async function site(path, payload) {
+        const res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        return data;
+      }
       async function api(path, opts = {}) {
         const res = await fetch(supabaseUrl + '/rest/v1/' + path, { ...opts, headers: { ...H, ...(opts.headers || {}) } });
         if (!res.ok) throw new Error((await res.text()) || res.statusText);
@@ -170,7 +176,7 @@ const espnTrades = (snap?.transactions ?? [])
         if (!offering || !seeking) return alertMsg('Fill in both what you\'re shopping and what you want.');
         $('submit-post').disabled = true;
         try {
-          await api('trade_posts', { method: 'POST', body: JSON.stringify({ team_id: t.id, team_name: t.name, offering, seeking, notes: notes || null }), headers: { Prefer: 'return=minimal' } });
+          await site('/api/trade', { type: 'post', offering, seeking, notes });
           $('offering').value = $('seeking').value = $('notes').value = '';
           $('composer').hidden = true;
           await load();
@@ -227,7 +233,7 @@ const espnTrades = (snap?.transactions ?? [])
         const t = requireTeam(); if (!t) return;
         const input = f.querySelector('input'); const body = input.value.trim(); if (!body) return;
         input.disabled = true;
-        try { await api('trade_comments', { method: 'POST', body: JSON.stringify({ post_id: f.dataset.id, team_id: t.id, team_name: t.name, body }), headers: { Prefer: 'return=minimal' } }); await load(); }
+        try { await site('/api/trade', { type: 'comment', postId: f.dataset.id, body }); await load(); }
         catch (e) { alertMsg('Could not reply: ' + e.message); input.disabled = false; }
       });
       document.addEventListener('click', async (ev) => {

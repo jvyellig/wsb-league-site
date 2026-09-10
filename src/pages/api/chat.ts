@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { env, getSnapshot } from '../../lib/store';
 import { postDiscord } from '../../lib/discord';
+import { sendPush } from '../../lib/push';
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
@@ -35,8 +36,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
   if (!res.ok) return json({ error: `Could not save message (${res.status}).` }, 502);
   const [row] = await res.json();
 
-  // Fire-and-forget mirror to Discord (no-op without DISCORD_WEBHOOK_URL)
+  // Fire-and-forget: mirror to Discord (no-op without DISCORD_WEBHOOK_URL) and push-notify subscribers (throttled per device)
   postDiscord(`**${team.name}:** ${text}`).catch(() => {});
+  sendPush({ title: `${team.name} in league chat`, body: text.length > 120 ? text.slice(0, 119) + '…' : text, url: '/chat', tag: 'wsb-chat' }, (s) => s.prefs.chat && s.teamId !== team.id, { throttleChat: true }).catch(() => {});
 
   return json({ ok: true, message: row });
 };

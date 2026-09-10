@@ -17,11 +17,13 @@
     "@netlify/blobs": "^10.7.13",
     "@netlify/functions": "^6.0.0",
     "astro": "^7.3.2",
-    "marked": "^18.0.12"
+    "marked": "^18.0.12",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
     "@types/node": "^22.20.2",
+    "@types/web-push": "^3.6.4",
     "playwright": "^1.63.0",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3"
