@@ -10,7 +10,7 @@ import { db, KEYS } from './store';
 import type { Snapshot } from './types';
 
 export interface LogoIndex {
-  [teamId: string]: { src: string; contentType: string; fetchedAt: string; ok: boolean };
+  [teamId: string]: { src: string; contentType: string; fetchedAt: string; ok: boolean; override?: boolean };
 }
 
 const MAX_BYTES = 4 * 1024 * 1024;

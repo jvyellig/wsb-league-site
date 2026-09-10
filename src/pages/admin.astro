@@ -38,6 +38,18 @@ import Base from '../layouts/Base.astro';
         <div class="flex"><button class="btn" id="note-btn">Save note</button><span class="tiny" id="note-msg"></span></div>
       </div>
     </div>
+
+    <div class="card section">
+      <div class="card-head"><h2>Team logos</h2><span class="sub">Override a missing or broken logo — the override stays until the owner sets a new one on ESPN</span></div>
+      <div id="logo-grid" class="grid grid-4" style="gap:10px"></div>
+      <div class="flex" style="margin-top:14px;gap:10px;align-items:flex-end;flex-wrap:wrap">
+        <div class="field" style="margin:0;min-width:220px"><label>Team</label><select id="logo-team"></select></div>
+        <div class="field" style="margin:0"><label>Image (PNG/JPG/SVG, under 2 MB)</label><input type="file" id="logo-file" accept="image/*" /></div>
+        <button class="btn" id="logo-btn">Upload override</button>
+        <button class="btn sm secondary" id="logo-clear">Remove override</button>
+        <span class="tiny" id="logo-msg"></span>
+      </div>
+    </div>
   </div>
 
   <script is:inline>
@@ -70,6 +82,10 @@ import Base from '../layouts/Base.astro';
         sel.innerHTML = state.teams.map((t) => `<option value="${t.id}">${t.name}${state.notes[t.id] ? ' ●' : ''}</option>`).join('');
         if (cur) sel.value = cur;
         $('note-text').value = state.notes[sel.value] || '';
+        const lsel = $('logo-team'); const lcur = lsel.value;
+        lsel.innerHTML = state.teams.map((t) => `<option value="${t.id}">${t.name}${t.override ? ' (override)' : t.logoOk ? '' : ' — missing'}</option>`).join('');
+        if (lcur) lsel.value = lcur;
+        $('logo-grid').innerHTML = state.teams.map((t) => `<div class="flex" style="gap:8px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px">${t.logoOk ? `<img class="logo" src="${t.logo}?v=${Date.now()}" alt="">` : '<span class="logo logo-fallback">?</span>'}<div class="tiny"><b>${t.name}</b><div class="dim">${t.override ? 'override' : t.logoOk ? 'from ESPN' : 'missing'}</div></div></div>`).join('');
       }
       async function refresh() { state = await call('state'); render(); }
       async function unlock() {
@@ -90,6 +106,19 @@ import Base from '../layouts/Base.astro';
       });
       $('cookie-reset').addEventListener('click', async () => { try { await call('cookie-reset'); flash('cookie-msg', 'Back to the ESPN_S2 environment variable.', true); await refresh(); } catch (e) { flash('cookie-msg', e.message, false); } });
       $('note-team').addEventListener('change', () => ($('note-text').value = state.notes[$('note-team').value] || ''));
+      $('logo-btn').addEventListener('click', async () => {
+        const file = $('logo-file').files[0]; if (!file) return flash('logo-msg', 'Choose an image first.', false);
+        if (file.size > 2 * 1024 * 1024) return flash('logo-msg', 'Image must be under 2 MB.', false);
+        const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(file); });
+        $('logo-btn').disabled = true; flash('logo-msg', 'Uploading…', true);
+        try { await call('logo', { teamId: Number($('logo-team').value), dataUrl }); flash('logo-msg', 'Saved. Pages update within a minute.', true); $('logo-file').value = ''; await refresh(); }
+        catch (e) { flash('logo-msg', e.message, false); }
+        $('logo-btn').disabled = false;
+      });
+      $('logo-clear').addEventListener('click', async () => {
+        try { await call('logo-clear', { teamId: Number($('logo-team').value) }); flash('logo-msg', 'Override removed — re-fetched from ESPN.', true); await refresh(); }
+        catch (e) { flash('logo-msg', e.message, false); }
+      });
       $('note-btn').addEventListener('click', async () => {
         try { await call('notes', { teamId: $('note-team').value, markdown: $('note-text').value }); flash('note-msg', 'Saved.', true); await refresh(); }
         catch (e) { flash('note-msg', e.message, false); }

@@ -7,8 +7,10 @@ interface Props {
   snap: Snapshot;
   live?: boolean; // current week: show live score + projection
   gotw?: boolean;
+  me?: number | null;
 }
-const { m, snap, live = false, gotw = false } = Astro.props;
+const { m, snap, live = false, gotw = false, me = null } = Astro.props;
+const mine = me !== null && me !== 0 && (m.home.teamId === me || m.away?.teamId === me);
 const home = teamById(snap, m.home.teamId);
 const away = m.away ? teamById(snap, m.away.teamId) : undefined;
 const decided = m.winner !== 'UNDECIDED';
@@ -20,8 +22,8 @@ const rows = [
 ];
 ---
 
-<div class:list={['matchup', { gotw }]}>
-  {gotw && <div class="tiny gold" style="font-weight:700;letter-spacing:.1em;margin-bottom:4px">★ GAME OF THE WEEK</div>}
+<div class:list={['matchup', { gotw, me: mine }]}>
+  {(gotw || mine) && <div class="tiny gold" style="font-weight:700;letter-spacing:.1em;margin-bottom:4px">{gotw ? '★ GAME OF THE WEEK' : ''}{gotw && mine ? ' · ' : ''}{mine ? 'YOUR MATCHUP' : ''}</div>}
   {rows.map((r) => (
     <div class:list={['row', { winner: decided && r.win, loser: decided && r.lose }]}>
       {r.t && <TeamLogo team={r.t} size="sm" />}

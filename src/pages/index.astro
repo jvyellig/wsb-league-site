@@ -8,7 +8,9 @@ import { fmt1, fmtDate, movement, teamById, record } from '../lib/format';
 
 const { snapshot: snap, rankings, derived, status } = await loadAll();
 const week = snap?.currentMatchupPeriod ?? 1;
-const thisWeek = snap ? snap.schedule.filter((m) => m.week === week) : [];
+const me = Astro.locals.teamId || null;
+const isMine = (m: { home: { teamId: number }; away: { teamId: number } | null }) => !!me && (m.home.teamId === me || m.away?.teamId === me);
+const thisWeek = snap ? [...snap.schedule.filter((m) => m.week === week)].sort((a, b) => Number(isMine(b)) - Number(isMine(a))) : [];
 const latestWeekKey = Object.keys(rankings.weeks).map(Number).sort((a, b) => b - a)[0];
 const latest = latestWeekKey !== undefined ? rankings.weeks[String(latestWeekKey)] : null;
 const standings = derived?.standings ?? [];
@@ -43,7 +45,7 @@ const txVerb: Record<string, string> = { WAIVER: 'claimed', FREEAGENT: 'added', 
           <span class="sub">Live scores update every 2 minutes during games · <a href="/matchups">previews & history</a></span>
         </div>
         <div class="grid grid-3">
-          {thisWeek.map((m) => <MatchupCard m={m} snap={snap} live gotw={m.id === gotwId} />)}
+          {thisWeek.map((m) => <MatchupCard m={m} snap={snap} live gotw={m.id === gotwId} me={me} />)}
         </div>
       </section>
 
@@ -60,7 +62,7 @@ const txVerb: Record<string, string> = { WAIVER: 'claimed', FREEAGENT: 'added', 
                 {(standings.length ? standings : snap.teams.map((t, i) => ({ teamId: t.id, seed: i + 1, wins: t.wins, losses: t.losses, ties: t.ties, pointsFor: t.pointsFor, luck: 0 }))).map((s) => {
                   const t = teamById(snap, s.teamId)!;
                   return (
-                    <tr>
+                    <tr class:list={{ me: s.teamId === me }}>
                       <td class="rank-cell">{s.seed}</td>
                       <td><TeamCell team={t} size="sm" /></td>
                       <td class="num">{record(s)}</td>
@@ -88,7 +90,7 @@ const txVerb: Record<string, string> = { WAIVER: 'claimed', FREEAGENT: 'added', 
                     const t = teamById(snap, e.teamId)!;
                     const mv = movement(e.prevRank, e.rank);
                     return (
-                      <tr>
+                      <tr class:list={{ me: e.teamId === me }}>
                         <td class="rank-cell">{e.rank}</td>
                         <td><TeamCell team={t} size="sm" sub={e.grade ? `Draft grade ${e.grade}` : undefined} /></td>
                         <td class="num">{fmt1(e.score)}</td>
@@ -169,7 +171,7 @@ const txVerb: Record<string, string> = { WAIVER: 'claimed', FREEAGENT: 'added', 
                   {[...derived.odds].sort((a, b) => b.playoff - a.playoff || b.title - a.title).slice(0, 8).map((o) => {
                     const t = teamById(snap, o.teamId)!;
                     return (
-                      <tr>
+                      <tr class:list={{ me: o.teamId === me }}>
                         <td><TeamCell team={t} size="sm" /></td>
                         <td class="num">{Math.round(o.playoff)}%</td>
                         <td class="num dim">{Math.round(o.bye)}%</td>

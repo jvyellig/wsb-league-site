@@ -12,6 +12,7 @@ const week = requested !== null && weekKeys.includes(Number(requested)) ? Number
 const wr = week !== undefined ? rankings.weeks[String(week)] : null;
 const compLabels: Record<string, string> = { results: 'Results', scoring: 'Scoring', roster: 'Roster', activity: 'Moves' };
 const compColors: Record<string, string> = { results: '', scoring: 'gold', roster: 'purple', activity: 'red' };
+const me = Astro.locals.teamId || null;
 ---
 
 <Base title="Power Rankings">
@@ -43,7 +44,7 @@ const compColors: Record<string, string> = { results: '', scoring: 'gold', roste
         const mv = movement(e.prevRank, e.rank);
         const comps = Object.entries(e.components).filter(([k]) => k !== 'draft');
         return (
-          <div class="card" style="padding:16px 20px">
+          <div class:list={['card', { me: e.teamId === me }]} style="padding:16px 20px">
             <div style="display:grid;grid-template-columns:56px 1fr auto;gap:16px;align-items:center">
               <div style="text-align:center">
                 <div style="font-family:var(--font-display);font-size:1.9rem;font-weight:800;line-height:1">{e.rank}</div>
@@ -103,7 +104,7 @@ const compColors: Record<string, string> = { results: '', scoring: 'gold', roste
           </thead>
           <tbody>
             {wr.entries.map((e) => (
-              <tr>
+              <tr class:list={{ me: e.teamId === me }}>
                 <td class="rank-cell">{e.rank}</td>
                 <td style="font-weight:600">{teamById(snap, e.teamId)?.name}</td>
                 {Object.keys(WEIGHTS).map((k) => {

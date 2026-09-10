@@ -12,6 +12,7 @@ const remaining = snap ? Math.max(0, snap.regularSeasonWeeks - played) : 0;
 const P = snap?.playoffTeams ?? 6;
 const byes = 2 ** Math.ceil(Math.log2(P)) - P;
 const heat = (v: number) => `background:rgba(61,220,151,${(v / 100) * 0.35})`;
+const me = Astro.locals.teamId || null;
 ---
 
 <Base title="Playoff Odds">
@@ -38,7 +39,7 @@ const heat = (v: number) => `background:rgba(61,220,151,${(v / 100) * 0.35})`;
                 const t = teamById(snap, o.teamId)!;
                 const s = standings.get(o.teamId);
                 return (
-                  <tr>
+                  <tr class:list={{ me: o.teamId === me }}>
                     <td><TeamCell team={t} /></td>
                     <td class="num">{s ? record(s) : record(t)}</td>
                     <td class="num">{o.avgWins.toFixed(1)}</td>

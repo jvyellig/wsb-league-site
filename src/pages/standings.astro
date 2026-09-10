@@ -9,6 +9,7 @@ const rows = derived?.standings ?? [];
 const oddsById = new Map((derived?.odds ?? []).map((o) => [o.teamId, o]));
 const playoffTeams = snap?.playoffTeams ?? 6;
 const weeksPlayed = derived?.completedWeeks.length ?? 0;
+const me = Astro.locals.teamId || null;
 ---
 
 <Base title="Standings">
@@ -37,7 +38,7 @@ const weeksPlayed = derived?.completedWeeks.length ?? 0;
               const t = teamById(snap, s.teamId)!;
               const o = oddsById.get(s.teamId);
               return (
-                <tr style={s.seed === playoffTeams ? 'border-bottom:2px dashed var(--border-2)' : ''}>
+                <tr class:list={{ me: s.teamId === me }} style={s.seed === playoffTeams ? 'border-bottom:2px dashed var(--border-2)' : ''}>
                   <td class="rank-cell">{s.seed}</td>
                   <td><TeamCell team={t} /></td>
                   <td class="num" style="font-weight:700">{record(s)}</td>

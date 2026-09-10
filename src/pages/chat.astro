@@ -1,39 +1,153 @@
 ---
 import Base from '../layouts/Base.astro';
-import { env } from '../lib/store';
+import { env, getSnapshot } from '../lib/store';
 
+const snap = await getSnapshot();
 const server = env('DISCORD_SERVER_ID') ?? '';
 const channel = env('DISCORD_CHANNEL_ID') ?? '';
 const invite = env('DISCORD_INVITE_URL') ?? 'https://discord.gg/vkbuhznBRf';
 const widgetReady = Boolean(server && channel);
+const supabaseUrl = env('SUPABASE_URL') ?? '';
+const supabaseKey = env('SUPABASE_ANON_KEY') ?? '';
+const teams = (snap?.teams ?? []).map((t) => ({ id: t.id, name: t.name, logo: t.logo }));
+const meId = Astro.locals.teamId ?? 0;
+const me = teams.find((t) => t.id === meId) ?? null;
+const back = encodeURIComponent('/chat');
 ---
 
 <Base title="League Chat">
   <div class="page-head">
     <div>
-      <div class="eyebrow">Discord</div>
+      <div class="eyebrow">Talk trash · make offers · complain about the rankings</div>
       <h1>League Chat</h1>
-      <p>The league's Discord, right here. Post as a guest with any name, or sign in with Discord so your messages sync with the app.</p>
+      <p>League chat lives right here — no account needed, you're already signed as {me ? <b>{me.name}</b> : 'a spectator'}. The Discord tab is the same server in its own app, for people who want notifications.</p>
     </div>
-    <a class="btn secondary" href={invite} target="_blank" rel="noopener">Open in Discord ↗</a>
+    <div class="week-tabs" style="margin:0" role="tablist">
+      <a href="#league" id="tab-league" class="active" role="tab">League chat</a>
+      <a href="#discord" id="tab-discord" role="tab">Discord</a>
+    </div>
   </div>
 
-  {widgetReady ? (
-    <div class="card" style="padding:0;overflow:hidden">
-      <iframe
-        src={`https://e.widgetbot.io/channels/${server}/${channel}?api=1`}
-        title="League Discord chat"
-        allow="clipboard-write; fullscreen"
-        style="width:100%;height:min(75vh,760px);border:0;display:block;background:#313338"
-      ></iframe>
+  <section id="panel-league">
+    {!supabaseUrl ? (
+      <div class="empty">Chat storage isn't configured yet.</div>
+    ) : (
+      <div class="card" style="padding:0;overflow:hidden;display:flex;flex-direction:column;height:min(72vh,720px)">
+        <div id="messages" style="flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:10px">
+          <div class="empty" id="chat-empty">Loading…</div>
+        </div>
+        <form id="chat-form" style="display:flex;gap:10px;padding:12px 14px;border-top:1px solid var(--border);background:var(--bg-2)">
+          <input type="text" id="chat-input" maxlength="500" autocomplete="off" placeholder={me ? `Message the league as ${me.name}…` : 'Pick your team to chat'} disabled={!me} style="flex:1" />
+          <button class="btn" type="submit" id="chat-send" disabled={!me}>Send</button>
+        </form>
+        {!me && (
+          <div class="tiny dim" style="padding:0 14px 10px;background:var(--bg-2)">Spectators can read along. <a href={`/api/identity?clear=1&next=${back}`}>Pick your team</a> to post.</div>
+        )}
+      </div>
+    )}
+  </section>
+
+  <section id="panel-discord" hidden>
+    <div class="flex between" style="margin-bottom:12px">
+      <span class="muted small">Same league, in the Discord app. Post as a guest or sign in with Discord.</span>
+      <a class="btn secondary sm" href={invite} target="_blank" rel="noopener">Open in Discord ↗</a>
     </div>
-  ) : (
-    <div class="card">
-      <h2>Chat embed not connected yet</h2>
-      <p class="muted">The embedded chat needs the WidgetBot bot added to the Discord server and the server/channel IDs set as <code>DISCORD_SERVER_ID</code> and <code>DISCORD_CHANNEL_ID</code>. Until then, use the invite link above.</p>
-      {server && (
-        <iframe src={`https://discord.com/widget?id=${server}&theme=dark`} width="100%" height="400" allowtransparency="true" frameborder="0" sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts" title="Discord server widget"></iframe>
-      )}
-    </div>
-  )}
+    {widgetReady ? (
+      <div class="card" style="padding:0;overflow:hidden">
+        <iframe src={`https://e.widgetbot.io/channels/${server}/${channel}?api=1`} title="League Discord chat" allow="clipboard-write; fullscreen" style="width:100%;height:min(72vh,720px);border:0;display:block;background:#313338" loading="lazy"></iframe>
+      </div>
+    ) : (
+      <div class="card"><p class="muted">The Discord embed isn't connected yet. Use the invite link above.</p></div>
+    )}
+  </section>
+
+  <script is:inline define:vars={{ supabaseUrl, supabaseKey, teams, meId }}>
+    (function () {
+      const $ = (id) => document.getElementById(id);
+      // Tabs
+      const tabs = { league: [$('tab-league'), $('panel-league')], discord: [$('tab-discord'), $('panel-discord')] };
+      function show(name) {
+        for (const [k, [tab, panel]] of Object.entries(tabs)) { tab.classList.toggle('active', k === name); panel.hidden = k !== name; }
+        try { localStorage.setItem('wsb-chat-tab', name); } catch {}
+      }
+      for (const [k, [tab]] of Object.entries(tabs)) tab.addEventListener('click', (e) => { e.preventDefault(); show(k); history.replaceState(null, '', '#' + k); });
+      let initial = location.hash.replace('#', '');
+      if (!tabs[initial]) { try { initial = localStorage.getItem('wsb-chat-tab') || 'league'; } catch { initial = 'league'; } }
+      show(tabs[initial] ? initial : 'league');
+
+      if (!supabaseUrl) return;
+      const H = { apikey: supabaseKey, Authorization: 'Bearer ' + supabaseKey };
+      const teamById = Object.fromEntries(teams.map((t) => [String(t.id), t]));
+      const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+      const list = $('messages');
+      let lastId = 0;
+      let seen = new Set();
+
+      function fmtTime(iso) {
+        const d = new Date(iso); const now = new Date();
+        const sameDay = d.toDateString() === now.toDateString();
+        return d.toLocaleString('en-US', sameDay ? { hour: 'numeric', minute: '2-digit' } : { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      }
+      function logoHtml(t) {
+        const ok = t && /^(https?:\/\/|\/logos\/)/.test(t.logo || '');
+        const ini = (t?.name || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+        return ok ? `<img class="logo sm" src="${esc(t.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'logo sm logo-fallback',textContent:'${esc(ini)}'}))">` : `<span class="logo sm logo-fallback">${esc(ini)}</span>`;
+      }
+      function render(msgs) {
+        const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
+        const empty = $('chat-empty'); if (empty) empty.remove();
+        for (const m of msgs) {
+          if (seen.has(m.id)) continue; seen.add(m.id);
+          const t = teamById[String(m.team_id)] || { name: m.team_name, logo: '' };
+          const mine = String(m.team_id) === String(meId);
+          const el = document.createElement('div');
+          el.className = 'chat-msg' + (mine ? ' mine' : '');
+          el.innerHTML = `${logoHtml(t)}<div><div class="tiny"><b style="color:${mine ? 'var(--gold)' : 'var(--text)'}">${esc(m.team_name)}</b> <span class="dim">${fmtTime(m.created_at)}</span></div><div class="chat-body">${esc(m.body)}</div></div>`;
+          list.appendChild(el);
+          lastId = Math.max(lastId, m.id);
+        }
+        if (msgs.length && (atBottom || list.children.length <= msgs.length)) list.scrollTop = list.scrollHeight;
+      }
+      async function fetchMsgs(sinceId) {
+        const q = sinceId ? `chat_messages?select=*&id=gt.${sinceId}&order=id.asc&limit=200` : `chat_messages?select=*&order=id.desc&limit=150`;
+        const res = await fetch(supabaseUrl + '/rest/v1/' + q, { headers: H });
+        if (!res.ok) throw new Error(await res.text());
+        const rows = await res.json();
+        return sinceId ? rows : rows.reverse();
+      }
+      async function load(initialLoad) {
+        try {
+          const rows = await fetchMsgs(initialLoad ? 0 : lastId);
+          if (initialLoad && rows.length === 0) list.innerHTML = '<div class="empty" id="chat-empty">Nobody has said anything yet. Be the first.</div>';
+          render(rows);
+        } catch (e) {
+          if (initialLoad) list.innerHTML = `<div class="empty" id="chat-empty">Couldn't load chat: ${esc(e.message)}</div>`;
+        }
+      }
+      load(true);
+      let timer = setInterval(() => { if (!document.hidden && !$('panel-league').hidden) load(false); }, 4000);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) load(false); });
+
+      const form = $('chat-form'), input = $('chat-input'), send = $('chat-send');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const body = input.value.trim(); if (!body) return;
+        send.disabled = true; input.disabled = true;
+        try {
+          const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || res.statusText);
+          input.value = '';
+          if (data.message) { const e = $('chat-empty'); if (e) e.remove(); render([data.message]); list.scrollTop = list.scrollHeight; }
+          await load(false);
+        } catch (err) { alert('Could not send: ' + err.message); }
+        send.disabled = false; input.disabled = false; input.focus();
+      });
+    })();
+  </script>
+  <style is:inline>
+    .chat-msg { display: flex; gap: 10px; align-items: flex-start; }
+    .chat-msg .chat-body { font-size: 0.95rem; white-space: pre-wrap; word-break: break-word; background: var(--surface-2); border: 1px solid var(--border); border-radius: 4px 14px 14px 14px; padding: 8px 12px; margin-top: 3px; display: inline-block; max-width: min(70ch, 100%); }
+    .chat-msg.mine .chat-body { background: rgba(245, 196, 81, 0.12); border-color: rgba(245, 196, 81, 0.35); }
+  </style>
 </Base>

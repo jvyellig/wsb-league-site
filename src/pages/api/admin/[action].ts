@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { db, env, getNotes, getSnapshot, getStatus, KEYS } from '../../../lib/store';
 import { runSync } from '../../../lib/sync';
 import { fetchLeague } from '../../../lib/espn';
+import type { LogoIndex } from '../../../lib/logos';
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
@@ -26,7 +27,8 @@ export const POST: APIRoute = async ({ params, request }) => {
   switch (action) {
     case 'state': {
       const [status, notes, snap] = await Promise.all([getStatus(true), getNotes(true), getSnapshot()]);
-      return json({ status, notes, teams: snap?.teams.map((t) => ({ id: t.id, name: t.name })) ?? [], hasEnvCookie: Boolean(env('ESPN_S2')) });
+      const logos = (await db.get<LogoIndex>(KEYS.logos)) ?? {};
+      return json({ status, notes, teams: snap?.teams.map((t) => ({ id: t.id, name: t.name, logo: t.logo, logoOk: !!logos[t.id]?.ok, override: !!logos[t.id]?.override })) ?? [], hasEnvCookie: Boolean(env('ESPN_S2')) });
     }
     case 'sync': {
       const result = await runSync({ force: Boolean(body.force) });
@@ -58,6 +60,34 @@ export const POST: APIRoute = async ({ params, request }) => {
       if (text.trim()) notes[teamId] = text;
       else delete notes[teamId];
       await db.set(KEYS.notes, notes);
+      return json({ ok: true });
+    }
+    case 'logo': {
+      // Upload an image to use as a team's logo until ESPN reports a different logo URL for that team.
+      const teamId = Number(body.teamId);
+      const dataUrl = String(body.dataUrl ?? '');
+      const m = /^data:(image\/(?:png|jpeg|jpg|gif|webp|svg\+xml));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+      if (!Number.isInteger(teamId) || !m) return json({ error: 'Send a PNG, JPG, GIF, WebP or SVG image.' }, 400);
+      const bytes = Buffer.from(m[2], 'base64');
+      if (bytes.byteLength > 2 * 1024 * 1024) return json({ error: 'Keep the image under 2 MB.' }, 400);
+      const snap = await getSnapshot();
+      const team = snap?.teams.find((t) => t.id === teamId);
+      if (!team) return json({ error: 'Unknown team.' }, 400);
+      const index: LogoIndex = (await db.get<LogoIndex>(KEYS.logos, { strong: true })) ?? {};
+      const espnSrc = index[teamId]?.src ?? team.logo;
+      await db.setBytes(KEYS.logo(teamId), bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+      index[teamId] = { src: espnSrc, contentType: m[1], fetchedAt: new Date().toISOString(), ok: true, override: true };
+      await db.set(KEYS.logos, index);
+      await runSync(); // rewrites league.json so pages point at /logos/<id>
+      return json({ ok: true });
+    }
+    case 'logo-clear': {
+      const teamId = Number(body.teamId);
+      const index: LogoIndex = (await db.get<LogoIndex>(KEYS.logos, { strong: true })) ?? {};
+      delete index[teamId];
+      await db.set(KEYS.logos, index);
+      await db.del(KEYS.logo(teamId));
+      await runSync(); // re-fetches from ESPN
       return json({ ok: true });
     }
     default:

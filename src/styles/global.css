@@ -68,6 +68,12 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0
 .nav-links a { color: var(--muted); padding: 8px 11px; border-radius: 8px; font-size: 0.9rem; font-weight: 500; white-space: nowrap; }
 .nav-links a:hover { color: var(--text); background: var(--surface); text-decoration: none; }
 .nav-links a.active { color: var(--text); background: var(--surface-2); }
+.nav-links a.mine { color: var(--gold); }
+.nav-links a.mine.active { background: rgba(245, 196, 81, 0.14); }
+.me-badge { display: inline-block; font-size: 0.62rem; font-weight: 800; letter-spacing: 0.1em; padding: 1px 6px; border-radius: 4px; background: var(--gold); color: #0a0e1a; margin-left: 6px; vertical-align: middle; }
+tr.me td { background: rgba(245, 196, 81, 0.09); }
+tr.me td:first-child { box-shadow: inset 3px 0 0 var(--gold); }
+.card.me, .matchup.me { border-color: rgba(245, 196, 81, 0.55); box-shadow: 0 0 0 1px rgba(245, 196, 81, 0.2) inset; }
 @media (max-width: 900px) {
   .nav .wrap { flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 8px; }
   .nav-links { margin-left: 0; width: 100%; }
@@ -114,7 +120,6 @@ tbody tr:last-child td { border-bottom: none; }
 .team-cell a { color: var(--text); font-weight: 600; }
 .team-cell small { display: block; color: var(--dim); font-weight: 400; font-size: 0.78rem; }
 .rank-cell { color: var(--dim); font-weight: 600; width: 36px; }
-tr.me td { background: rgba(91, 140, 255, 0.06); }
 
 /* ---------- Logos & avatars ---------- */
 .logo { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: var(--surface-2); border: 1px solid var(--border-2); flex: none; }

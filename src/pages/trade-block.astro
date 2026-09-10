@@ -7,6 +7,32 @@ const supabaseUrl = env('SUPABASE_URL') ?? '';
 const supabaseKey = env('SUPABASE_ANON_KEY') ?? '';
 const teams = (snap?.teams ?? []).map((t) => ({ id: t.id, name: t.name, logo: t.logo, owners: t.owners.join(' & ') })).sort((a, b) => a.name.localeCompare(b.name));
 const configured = Boolean(supabaseUrl && supabaseKey);
+const meId = Astro.locals.teamId ?? 0;
+const me = teams.find((t) => t.id === meId) ?? null;
+const back = encodeURIComponent('/trade-block');
+
+// Trades that went through ESPN (accepted → review period → executed/vetoed). Proposals stay private on ESPN.
+const statusLabel: Record<string, { text: string; cls: string }> = {
+  EXECUTED: { text: 'Completed', cls: 'green' },
+  PENDING: { text: 'Pending league review', cls: 'gold' },
+  PROPOSED: { text: 'Proposed', cls: 'blue' },
+  VETOED: { text: 'Vetoed', cls: 'red' },
+  CANCELED: { text: 'Canceled', cls: '' },
+  DECLINED: { text: 'Declined', cls: '' },
+  EXPIRED: { text: 'Expired', cls: '' },
+};
+const espnTrades = (snap?.transactions ?? [])
+  .filter((t) => t.type.startsWith('TRADE'))
+  .slice(0, 20)
+  .map((t) => {
+    const sides = new Map<number, string[]>();
+    for (const i of t.items) {
+      if (!i.toTeamId) continue;
+      if (!sides.has(i.toTeamId)) sides.set(i.toTeamId, []);
+      sides.get(i.toTeamId)!.push(i.playerName);
+    }
+    return { ...t, sides: [...sides.entries()].map(([teamId, players]) => ({ team: snap?.teams.find((x) => x.id === teamId), players })), label: statusLabel[t.status] ?? { text: t.status, cls: '' } };
+  });
 ---
 
 <Base title="Trade Block">
@@ -24,12 +50,18 @@ const configured = Boolean(supabaseUrl && supabaseKey);
   ) : (
     <>
       <div class="card" id="identity" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-        <label style="margin:0">You are</label>
-        <select id="me" style="width:auto;min-width:240px">
-          <option value="">— pick your team —</option>
-          {teams.map((t) => <option value={t.id}>{t.name} ({t.owners})</option>)}
-        </select>
-        <span class="tiny dim">Honor system — remembered on this device.</span>
+        {me ? (
+          <>
+            <span class="muted">Posting as</span>
+            <b>{me.name}</b>
+            <span class="tiny dim">· <a href={`/api/identity?clear=1&next=${back}`}>not you?</a></span>
+          </>
+        ) : (
+          <>
+            <span class="muted">You're browsing as a spectator — you can read the block but not post.</span>
+            <a class="btn sm secondary" href={`/api/identity?clear=1&next=${back}`}>Pick your team</a>
+          </>
+        )}
       </div>
 
       <div class="card" id="composer" hidden>
@@ -51,7 +83,30 @@ const configured = Boolean(supabaseUrl && supabaseKey);
     </>
   )}
 
-  <script is:inline define:vars={{ supabaseUrl, supabaseKey, teams }}>
+  {snap && (
+    <div class="card section">
+      <div class="card-head"><h2>Trades on ESPN</h2><span class="sub">Accepted trades in league review, and completed ones</span></div>
+      {espnTrades.length === 0 ? (
+        <p class="muted" style="margin:0">No trades have gone through ESPN yet this season. Offers you make on ESPN stay private between the two teams until accepted.</p>
+      ) : (
+        <div class="grid" style="gap:10px">
+          {espnTrades.map((t) => (
+            <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;border-bottom:1px solid var(--border);padding:8px 0">
+              <div style="min-width:150px"><span class:list={['pill', t.label.cls]}>{t.label.text}</span><div class="tiny dim" style="margin-top:4px">{new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' })}</div></div>
+              {t.sides.map((side) => (
+                <div class="small" style="flex:1;min-width:180px">
+                  <div class="dim tiny" style="text-transform:uppercase;letter-spacing:.08em;font-weight:700">{side.team?.name ?? 'Team'} receives</div>
+                  <div>{side.players.join(', ') || '—'}</div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )}
+
+  <script is:inline define:vars={{ supabaseUrl, supabaseKey, teams, meId }}>
     (function () {
       if (!supabaseUrl) return;
       const H = { apikey: supabaseKey, Authorization: 'Bearer ' + supabaseKey, 'Content-Type': 'application/json' };
@@ -59,10 +114,9 @@ const configured = Boolean(supabaseUrl && supabaseKey);
       const $ = (id) => document.getElementById(id);
       const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
       const ago = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 60000); if (m < 1) return 'just now'; if (m < 60) return m + 'm ago'; const h = Math.round(m / 60); if (h < 36) return h + 'h ago'; return Math.round(h / 24) + 'd ago'; };
-      const me = $('me');
-      try { me.value = localStorage.getItem('wsb-team') || ''; } catch {}
-      me.addEventListener('change', () => { try { localStorage.setItem('wsb-team', me.value); } catch {} });
-      const requireTeam = () => { if (!me.value) { alertMsg('Pick your team first.'); me.focus(); return null; } return teamById[me.value]; };
+      const myTeam = teamById[String(meId)] || null;
+      const requireTeam = () => { if (!myTeam) { alertMsg('Pick your team (footer → switch team) to post.'); return null; } return myTeam; };
+      if (!myTeam) { $('new-post-btn').disabled = true; $('new-post-btn').title = 'Pick your team to post'; }
       let msgTimer;
       function alertMsg(text, ok) { const el = $('post-msg'); el.textContent = text; el.className = 'tiny ' + (ok ? 'green' : 'red'); clearTimeout(msgTimer); msgTimer = setTimeout(() => (el.textContent = ''), 4000); }
 

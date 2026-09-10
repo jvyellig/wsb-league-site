@@ -15,6 +15,8 @@ const [snapshot, status] = await Promise.all([getSnapshot().catch(() => null), g
 const readHiccup = !snapshot && !!status.lastSuccess;
 const leagueName = snapshot?.leagueName ?? 'WSB Generations League';
 const path = Astro.url.pathname;
+const meId = Astro.locals.teamId ?? null;
+const me = meId ? snapshot?.teams.find((t) => t.id === meId) ?? null : null;
 const nav = [
   ['/', 'Home'],
   ['/standings', 'Standings'],
@@ -26,6 +28,7 @@ const nav = [
   ['/trade-block', 'Trade Block'],
   ['/chat', 'Chat'],
 ];
+if (me) nav.splice(1, 0, [`/teams/${me.id}`, 'My Team']);
 const isActive = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
 
 const staleMs = status.lastSuccess ? Date.now() - new Date(status.lastSuccess).getTime() : Infinity;
@@ -34,6 +37,7 @@ const stale = staleMs > 3 * 60 * 60 * 1000; // > 3 hours without a successful sy
 if (!noCache) {
   Astro.response.headers.set('Cache-Control', 'public, max-age=0, must-revalidate');
   Astro.response.headers.set('Netlify-CDN-Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
+  Astro.response.headers.set('Netlify-Vary', 'cookie=wsb_team'); // pages are personalized per team
 } else {
   Astro.response.headers.set('Cache-Control', 'private, no-store');
 }
@@ -56,7 +60,7 @@ if (!noCache) {
       <div class="wrap">
         <a class="brand" href="/"><span class="brand-mark">WSB</span><span>{leagueName.replace(/ League$/, '')}</span></a>
         <nav class="nav-links">
-          {nav.map(([href, label]) => <a href={href} class:list={{ active: isActive(href) }}>{label}</a>)}
+          {nav.map(([href, label]) => <a href={href} class:list={{ active: label === 'My Team' ? path === href : isActive(href), mine: label === 'My Team' }}>{label}</a>)}
         </nav>
       </div>
     </header>
@@ -99,7 +103,10 @@ if (!noCache) {
 
     <footer class="footer">
       <div class="wrap">
-        <span>{leagueName} · {snapshot?.season ?? new Date().getFullYear()} season</span>
+        <span>
+          {leagueName} · {snapshot?.season ?? new Date().getFullYear()} season
+          {me ? <> · You're <b>{me.name}</b></> : meId === 0 ? ' · Spectating' : ''} · <a href={`/api/identity?clear=1&next=${encodeURIComponent(path)}`}>switch team</a>
+        </span>
         <span>
           ESPN data updated {timeAgo(status.lastSuccess)} · refreshes every 2 min during games, every 15 min otherwise · <a href="/methodology">how rankings work</a> · <a href="/admin">admin</a>
         </span>
