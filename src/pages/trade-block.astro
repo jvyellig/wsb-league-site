@@ -9,6 +9,10 @@ const teams = (snap?.teams ?? []).map((t) => ({ id: t.id, name: t.name, logo: t.
 const configured = Boolean(supabaseUrl && supabaseKey);
 const meId = Astro.locals.teamId ?? 0;
 const me = teams.find((t) => t.id === meId) ?? null;
+const myRoster = (snap?.teams.find((t) => t.id === meId)?.roster ?? [])
+  .filter((p) => p.slotId !== 21)
+  .map((p) => ({ name: p.name, pos: p.pos, proTeam: p.proTeam, starter: p.starter, pts: Math.round(p.seasonPts * 10) / 10 }));
+const positions = ['QB', 'RB', 'WR', 'TE', 'K', 'D/ST'];
 const back = encodeURIComponent('/trade-block');
 
 // Trades that went through ESPN (accepted → review period → executed/vetoed). Proposals stay private on ESPN.
@@ -67,8 +71,22 @@ const espnTrades = (snap?.transactions ?? [])
       <div class="card" id="composer" hidden>
         <div class="card-head"><h2>New post</h2><button class="btn sm secondary" id="cancel-post">Cancel</button></div>
         <div class="grid grid-2">
-          <div class="field"><label>Shopping (players you'd move)</label><textarea id="offering" maxlength="500" placeholder="e.g. Breece Hall, a WR2 for depth"></textarea></div>
-          <div class="field"><label>Looking for</label><textarea id="seeking" maxlength="500" placeholder="e.g. A top-8 WR, will add a pick-up"></textarea></div>
+          <div class="field">
+            <label>Shopping (players you'd move)</label>
+            {myRoster.length > 0 && (
+              <div class="chips" id="roster-chips" style="margin-bottom:8px">
+                {myRoster.map((p) => <button type="button" class="chip" data-label={`${p.name} (${p.pos})`} title={`${p.pos} · ${p.proTeam}${p.starter ? ' · starter' : ' · bench'}`}><span class={`pos pos-${p.pos.replace('/', '')}`}>{p.pos}</span>{p.name}</button>)}
+              </div>
+            )}
+            <textarea id="offering" maxlength="500" placeholder="Tap players above, or type anything — e.g. Breece Hall, a WR2 for depth"></textarea>
+          </div>
+          <div class="field">
+            <label>Looking for</label>
+            <div class="chips" id="pos-chips" style="margin-bottom:8px">
+              {positions.map((pos) => <button type="button" class="chip" data-label={pos}><span class={`pos pos-${pos.replace('/', '')}`}>{pos}</span>any {pos}</button>)}
+            </div>
+            <textarea id="seeking" maxlength="500" placeholder="Tap positions above, or type — e.g. A top-8 WR, will add a pick-up"></textarea>
+          </div>
         </div>
         <div class="field"><label>Notes (optional)</label><input type="text" id="notes" maxlength="300" placeholder="Anything else — timing, untouchables, who to DM" /></div>
         <div class="flex"><button class="btn" id="submit-post">Post it</button><span class="tiny dim" id="post-msg"></span></div>
@@ -127,6 +145,24 @@ const espnTrades = (snap?.transactions ?? [])
       }
 
       $('new-post-btn').addEventListener('click', () => { $('composer').hidden = false; $('offering').focus(); });
+
+      // Chip pickers: tapping a chip adds its label to the matching textarea (comma-separated); tapping again removes it.
+      function wireChips(containerId, textareaId) {
+        const box = $(containerId); if (!box) return;
+        const ta = $(textareaId);
+        const parts = () => ta.value.split(/\s*,\s*/).map((x) => x.trim()).filter(Boolean);
+        const sync = () => { const cur = parts(); for (const c of box.querySelectorAll('.chip')) c.classList.toggle('on', cur.includes(c.dataset.label)); };
+        box.addEventListener('click', (e) => {
+          const chip = e.target.closest('.chip'); if (!chip) return;
+          const label = chip.dataset.label; let cur = parts();
+          cur = cur.includes(label) ? cur.filter((x) => x !== label) : [...cur, label];
+          ta.value = cur.join(', '); sync();
+        });
+        ta.addEventListener('input', sync);
+        sync();
+      }
+      wireChips('roster-chips', 'offering');
+      wireChips('pos-chips', 'seeking');
       $('cancel-post').addEventListener('click', () => ($('composer').hidden = true));
       $('submit-post').addEventListener('click', async () => {
         const t = requireTeam(); if (!t) return;

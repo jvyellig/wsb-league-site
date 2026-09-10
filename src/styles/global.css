@@ -196,6 +196,13 @@ label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 
 .msg.ok { background: rgba(61, 220, 151, 0.12); color: #a7f3d3; }
 .msg.err { background: rgba(255, 107, 122, 0.14); color: #ffc2c9; }
 
+/* ---------- Chip pickers ---------- */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 5px; border-radius: 999px; background: var(--bg-2); border: 1px solid var(--border-2); color: var(--muted); font-size: 0.8rem; font-weight: 500; cursor: pointer; }
+.chip:hover { color: var(--text); border-color: var(--accent); }
+.chip.on { background: rgba(91, 140, 255, 0.16); border-color: var(--accent); color: var(--text); }
+.chip.on::after { content: '✓'; color: var(--accent-2); font-weight: 700; margin-left: 2px; }
+
 /* ---------- Misc ---------- */
 .muted { color: var(--muted); }
 .dim { color: var(--dim); }
