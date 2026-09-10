@@ -1,0 +1,197 @@
+---
+import { marked } from 'marked';
+import Base from '../../layouts/Base.astro';
+import TeamLogo from '../../components/TeamLogo.astro';
+import { loadAll } from '../../lib/store';
+import { fmt1, fmtDate, headshot, injuryTag, movement, ordinal, posClass, record, teamById } from '../../lib/format';
+
+const { snapshot: snap, rankings, derived, notes, draft } = await loadAll();
+const id = Number(Astro.params.id);
+const team = teamById(snap, id);
+if (!snap || !team) return new Response('Team not found', { status: 404 });
+
+const standing = derived?.standings.find((s) => s.teamId === id);
+const odds = derived?.odds.find((o) => o.teamId === id);
+const weekKeys = Object.keys(rankings.weeks).map(Number).sort((a, b) => a - b);
+const latest = weekKeys.length ? rankings.weeks[String(weekKeys[weekKeys.length - 1])] : null;
+const entry = latest?.entries.find((e) => e.teamId === id);
+const rankHistory = weekKeys.map((w) => ({ w, rank: rankings.weeks[String(w)].entries.find((e) => e.teamId === id)?.rank ?? null }));
+const grade = draft?.grades.find((g) => g.teamId === id);
+const note = notes[String(id)] ? await marked.parse(notes[String(id)]) : null;
+
+const starters = team.roster.filter((p) => p.starter);
+const bench = team.roster.filter((p) => !p.starter);
+const projTotal = starters.reduce((s, p) => s + p.projWeek, 0);
+const actualTotal = starters.reduce((s, p) => s + p.actualWeek, 0);
+
+const games = snap.schedule
+  .filter((m) => m.home.teamId === id || (m.away && m.away.teamId === id))
+  .sort((a, b) => a.week - b.week)
+  .map((m) => {
+    const isHome = m.home.teamId === id;
+    const me = isHome ? m.home : m.away!;
+    const opp = isHome ? m.away : m.home;
+    const decided = m.winner !== 'UNDECIDED';
+    const won = decided && ((isHome && m.winner === 'HOME') || (!isHome && m.winner === 'AWAY'));
+    const tie = m.winner === 'TIE';
+    return { week: m.week, opp: opp ? teamById(snap, opp.teamId) : undefined, me, oppSide: opp, decided, won, tie, playoff: m.playoffTier !== 'NONE', current: m.week === snap.currentMatchupPeriod };
+  });
+const myTx = snap.transactions.filter((t) => t.teamId === id && t.status === 'EXECUTED').slice(0, 12);
+const myPicks = (draft?.picks ?? []).filter((p) => p.teamId === id);
+const txVerb: Record<string, string> = { WAIVER: 'Waiver claim', FREEAGENT: 'Free agent', TRADE: 'Trade' };
+---
+
+<Base title={team.name}>
+  <div class="card" style="margin-bottom:16px">
+    <div class="flex between" style="gap:20px">
+      <div class="flex" style="gap:18px">
+        <TeamLogo team={team} size="lg" />
+        <div>
+          <div class="eyebrow">{team.owners.join(' & ')}</div>
+          <h1 style="margin-bottom:6px">{team.name}</h1>
+          <div class="flex" style="gap:8px">
+            <span class="pill">{record(team)}</span>
+            {standing && <span class="pill blue">{ordinal(standing.seed)} place</span>}
+            {entry && <span class="pill gold">Power rank #{entry.rank}</span>}
+            {grade && <span class="pill">Draft grade {grade.grade}</span>}
+            {team.streakLength > 1 && <span class:list={['pill', team.streakType === 'WIN' ? 'green' : 'red']}>{team.streakType === 'WIN' ? 'W' : 'L'}{team.streakLength} streak</span>}
+          </div>
+        </div>
+      </div>
+      <div class="stats" style="min-width:min(100%,420px)">
+        <div class="stat"><div class="label">Points for</div><div class="value">{fmt1(team.pointsFor)}</div></div>
+        <div class="stat"><div class="label">Points against</div><div class="value">{fmt1(team.pointsAgainst)}</div></div>
+        <div class="stat"><div class="label">All-play</div><div class="value">{standing ? `${standing.allPlayWins}-${standing.allPlayLosses}` : '—'}</div></div>
+        <div class="stat"><div class="label">Playoff odds</div><div class="value">{odds ? `${Math.round(odds.playoff)}%` : '—'}<small>{odds ? `title ${odds.title.toFixed(1)}%` : ''}</small></div></div>
+      </div>
+    </div>
+  </div>
+
+  {note && (
+    <div class="notes" style="margin-bottom:16px">
+      <h3>Commissioner's notes</h3>
+      <div class="prose" set:html={note} />
+    </div>
+  )}
+
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-head">
+        <h2>Roster · Week {snap.currentWeek}</h2>
+        <span class="sub">Proj {fmt1(projTotal)}{actualTotal > 0 ? ` · Actual ${fmt1(actualTotal)}` : ''}</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Slot</th><th>Player</th><th class="num">Proj</th><th class="num">Pts</th><th class="num">Season</th></tr></thead>
+          <tbody>
+            {[...starters, ...bench].map((p, i) => {
+              const inj = injuryTag(p.injuryStatus);
+              return (
+                <tr style={i === starters.length ? 'border-top:2px solid var(--border-2)' : ''}>
+                  <td><span class={posClass(p.slot === 'BE' || p.slot === 'IR' ? 'FLEX' : p.slot)}>{p.slot}</span></td>
+                  <td>
+                    <div class="flex" style="gap:8px;flex-wrap:nowrap">
+                      <img class="headshot" src={headshot(p.id, p.pos, p.proTeam)} alt="" loading="lazy" onerror="this.style.visibility='hidden'" />
+                      <div>
+                        <div style="font-weight:600">{p.name}{inj && <span class={inj.cls}>{inj.text}</span>}</div>
+                        <div class="tiny dim">{p.pos} · {p.proTeam}{p.acquisitionType !== 'DRAFT' ? ` · ${p.acquisitionType === 'FREEAGENT' ? 'FA' : p.acquisitionType.toLowerCase()}` : ''}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="num dim">{fmt1(p.projWeek)}</td>
+                  <td class="num" style="font-weight:600">{p.actualWeek ? fmt1(p.actualWeek) : '—'}</td>
+                  <td class="num dim">{fmt1(p.seasonPts)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <div class="card-head"><h2>Power ranking history</h2><a class="sub" href="/power-rankings">Rankings →</a></div>
+        {rankHistory.length ? (
+          <>
+            <div class="sparkline" style="height:70px">
+              {rankHistory.map((h) => (
+                <i title={`Week ${h.w}: #${h.rank}`} style={`height:${h.rank ? Math.max(8, (13 - h.rank) * (100 / 12)) : 4}%`} class:list={{ best: h.rank === 1, worst: h.rank === snap.teams.length }} />
+              ))}
+            </div>
+            <div class="flex between tiny dim" style="margin-top:6px"><span>Wk {rankHistory[0].w}{rankHistory[0].w === 0 ? ' (draft)' : ''}</span><span>Wk {rankHistory[rankHistory.length - 1].w}</span></div>
+            {entry && <p class="small muted" style="margin:12px 0 0">{entry.blurb}</p>}
+          </>
+        ) : (
+          <p class="muted">No rankings yet.</p>
+        )}
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Schedule</h2></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Wk</th><th>Opponent</th><th class="num">Score</th><th class="num">Result</th></tr></thead>
+            <tbody>
+              {games.map((g) => (
+                <tr style={g.current ? 'background:rgba(91,140,255,.08)' : ''}>
+                  <td class="dim">{g.week}{g.playoff ? '*' : ''}</td>
+                  <td>{g.opp ? <a href={`/teams/${g.opp.id}`} style="color:var(--text);font-weight:600">{g.opp.name}</a> : <span class="dim">Bye</span>}</td>
+                  <td class="num">{g.decided || g.current ? `${fmt1(g.current && !g.decided ? g.me.live : g.me.points)} – ${g.oppSide ? fmt1(g.current && !g.decided ? g.oppSide.live : g.oppSide.points) : ''}` : <span class="dim">—</span>}</td>
+                  <td class="num">{g.decided ? <span class:list={[g.won ? 'green' : g.tie ? 'gold' : 'red']} style="font-weight:700">{g.won ? 'W' : g.tie ? 'T' : 'L'}</span> : g.current ? <span class="pill blue">live</span> : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-2 section">
+    <div class="card">
+      <div class="card-head"><h2>Transactions</h2><span class="sub">{team.moves} moves · {team.trades} trades</span></div>
+      {myTx.length === 0 ? (
+        <p class="muted">No moves yet.</p>
+      ) : (
+        <ul style="list-style:none;padding:0;margin:0">
+          {myTx.map((tx) => (
+            <li class="small" style="padding:8px 0;border-bottom:1px solid var(--border)">
+              <span class="dim tiny" style="margin-right:8px">{fmtDate(tx.date)}</span>
+              <span class="muted">{txVerb[tx.type] ?? tx.type}:</span>
+              {tx.items.map((i) => (
+                <span class:list={[i.type === 'DROP' || (i.type === 'TRADE' && i.fromTeamId === id) ? 'red' : 'green']} style="margin-left:6px">
+                  {i.type === 'DROP' || (i.type === 'TRADE' && i.fromTeamId === id) ? '−' : '+'} {i.playerName}
+                </span>
+              ))}
+              {tx.bid > 0 && <span class="dim"> (${tx.bid})</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Draft</h2><a class="sub" href="/draft">Full recap →</a></div>
+      {myPicks.length === 0 ? (
+        <p class="muted">Draft data not available.</p>
+      ) : (
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Rd</th><th>Player</th><th class="num">Proj</th><th class="num">VOR</th><th class="num">vs slot</th></tr></thead>
+            <tbody>
+              {myPicks.map((p) => (
+                <tr>
+                  <td class="dim">{p.round}.{p.pick}</td>
+                  <td><span class={posClass(p.pos)}>{p.pos}</span> <span style="font-weight:600;margin-left:4px">{p.name}</span></td>
+                  <td class="num dim">{fmt1(p.proj)}</td>
+                  <td class="num">{fmt1(p.vor)}</td>
+                  <td class:list={['num', p.delta > 5 ? 'green' : p.delta < -5 ? 'red' : 'dim']}>{p.delta > 0 ? '+' : ''}{fmt1(p.delta)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  </div>
+</Base>

@@ -1,0 +1,99 @@
+---
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Admin" noCache>
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Commissioner tools</div>
+      <h1>Admin</h1>
+      <p>Refresh the ESPN cookie, edit team notes, and run a sync on demand. Nothing here needs a redeploy.</p>
+    </div>
+  </div>
+
+  <div class="card" id="login">
+    <div class="field" style="max-width:420px"><label>Passphrase</label><input type="password" id="pass" autocomplete="current-password" /></div>
+    <button class="btn" id="login-btn">Unlock</button>
+    <span class="tiny red" id="login-msg" style="margin-left:10px"></span>
+  </div>
+
+  <div id="panel" hidden>
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-head"><h2>ESPN connection</h2><button class="btn sm secondary" id="sync-btn">Sync now</button></div>
+        <div id="status-box" class="small"></div>
+        <div class="section" style="margin-top:18px">
+          <h3>Refresh the espn_s2 cookie</h3>
+          <p class="small muted">In Chrome, logged into ESPN Fantasy: DevTools → Application → Cookies → espn.com → copy the value of <code>espn_s2</code>. Paste it below. It's tested against ESPN before it's saved.</p>
+          <div class="field"><textarea id="s2" placeholder="AEB…" style="min-height:80px;font-family:ui-monospace,monospace;font-size:.8rem"></textarea></div>
+          <div class="flex"><button class="btn" id="cookie-btn">Test & save</button><button class="btn sm secondary" id="cookie-reset" title="Go back to the ESPN_S2 environment variable">Use env var instead</button><span class="tiny" id="cookie-msg"></span></div>
+        </div>
+        <details class="section"><summary>Sync log</summary><ul id="log" class="tiny" style="padding-left:18px;margin:8px 0 0;color:var(--muted)"></ul></details>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Team notes</h2><span class="sub">Markdown · shows on each team page</span></div>
+        <div class="field"><label>Team</label><select id="note-team"></select></div>
+        <div class="field"><label>Note</label><textarea id="note-text" style="min-height:220px" placeholder="**Bold**, _italics_, lists and links all work. Leave empty to remove the note."></textarea></div>
+        <div class="flex"><button class="btn" id="note-btn">Save note</button><span class="tiny" id="note-msg"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <script is:inline>
+    (function () {
+      const $ = (id) => document.getElementById(id);
+      let key = '';
+      try { key = sessionStorage.getItem('wsb-admin') || ''; } catch {}
+      let state = null;
+      const flash = (id, text, ok) => { const el = $(id); el.textContent = text; el.className = 'tiny ' + (ok ? 'green' : 'red'); };
+      async function call(action, body) {
+        const res = await fetch('/api/admin/' + action, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': key }, body: JSON.stringify(body || {}) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || data.message || res.statusText);
+        return data;
+      }
+      const fmt = (iso) => (iso ? new Date(iso).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never');
+      function render() {
+        const s = state.status;
+        $('status-box').innerHTML = `
+          <div class="stats">
+            <div class="stat"><div class="label">Status</div><div class="value" style="font-size:1.1rem;color:${s.authExpired ? 'var(--red)' : s.lastError ? 'var(--gold)' : 'var(--green)'}">${s.authExpired ? 'Cookie expired' : s.lastError ? 'Error' : 'Healthy'}</div></div>
+            <div class="stat"><div class="label">Last success</div><div class="value" style="font-size:1rem">${fmt(s.lastSuccess)}</div></div>
+            <div class="stat"><div class="label">Last attempt</div><div class="value" style="font-size:1rem">${fmt(s.lastAttempt)}</div></div>
+            <div class="stat"><div class="label">Cookie source</div><div class="value" style="font-size:1rem">${s.cookieSource === 'admin' ? 'Saved here ' + fmt(s.cookieUpdatedAt) : 'Env var ESPN_S2'}</div></div>
+          </div>
+          ${s.lastError ? `<p class="msg err" style="margin-top:10px">${s.lastError}</p>` : ''}`;
+        $('log').innerHTML = (s.log || []).map((l) => `<li style="color:${l.ok ? 'inherit' : 'var(--red)'}">${fmt(l.at)} — ${l.msg}</li>`).join('');
+        const sel = $('note-team');
+        const cur = sel.value;
+        sel.innerHTML = state.teams.map((t) => `<option value="${t.id}">${t.name}${state.notes[t.id] ? ' ●' : ''}</option>`).join('');
+        if (cur) sel.value = cur;
+        $('note-text').value = state.notes[sel.value] || '';
+      }
+      async function refresh() { state = await call('state'); render(); }
+      async function unlock() {
+        key = $('pass').value || key;
+        try { await refresh(); try { sessionStorage.setItem('wsb-admin', key); } catch {} $('login').hidden = true; $('panel').hidden = false; }
+        catch (e) { flash('login-msg', e.message, false); }
+      }
+      $('login-btn').addEventListener('click', unlock);
+      $('pass').addEventListener('keydown', (e) => e.key === 'Enter' && unlock());
+      if (key) unlock();
+
+      $('sync-btn').addEventListener('click', async () => { $('sync-btn').disabled = true; $('sync-btn').textContent = 'Syncing…'; try { await call('sync'); } catch (e) {} await refresh(); $('sync-btn').disabled = false; $('sync-btn').textContent = 'Sync now'; });
+      $('cookie-btn').addEventListener('click', async () => {
+        $('cookie-btn').disabled = true; flash('cookie-msg', 'Testing against ESPN…', true);
+        try { await call('cookie', { s2: $('s2').value }); flash('cookie-msg', 'Saved — ESPN accepted the cookie and a sync ran.', true); $('s2').value = ''; await refresh(); }
+        catch (e) { flash('cookie-msg', e.message, false); }
+        $('cookie-btn').disabled = false;
+      });
+      $('cookie-reset').addEventListener('click', async () => { try { await call('cookie-reset'); flash('cookie-msg', 'Back to the ESPN_S2 environment variable.', true); await refresh(); } catch (e) { flash('cookie-msg', e.message, false); } });
+      $('note-team').addEventListener('change', () => ($('note-text').value = state.notes[$('note-team').value] || ''));
+      $('note-btn').addEventListener('click', async () => {
+        try { await call('notes', { teamId: $('note-team').value, markdown: $('note-text').value }); flash('note-msg', 'Saved.', true); await refresh(); }
+        catch (e) { flash('note-msg', e.message, false); }
+      });
+    })();
+  </script>
+</Base>

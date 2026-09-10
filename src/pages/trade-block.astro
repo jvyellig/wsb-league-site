@@ -1,0 +1,153 @@
+---
+import Base from '../layouts/Base.astro';
+import { env, getSnapshot } from '../lib/store';
+
+const snap = await getSnapshot();
+const supabaseUrl = env('SUPABASE_URL') ?? '';
+const supabaseKey = env('SUPABASE_ANON_KEY') ?? '';
+const teams = (snap?.teams ?? []).map((t) => ({ id: t.id, name: t.name, logo: t.logo, owners: t.owners.join(' & ') })).sort((a, b) => a.name.localeCompare(b.name));
+const configured = Boolean(supabaseUrl && supabaseKey);
+---
+
+<Base title="Trade Block">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Open for business</div>
+      <h1>Trade Block</h1>
+      <p>Post who you're shopping and what you want back. Comment on other owners' posts to start a negotiation, then finish it on ESPN. Posts auto-archive after 14 days.</p>
+    </div>
+    <button class="btn" id="new-post-btn">+ Post to the block</button>
+  </div>
+
+  {!configured ? (
+    <div class="empty">Trade block storage isn't configured yet (SUPABASE_URL / SUPABASE_ANON_KEY).</div>
+  ) : (
+    <>
+      <div class="card" id="identity" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <label style="margin:0">You are</label>
+        <select id="me" style="width:auto;min-width:240px">
+          <option value="">— pick your team —</option>
+          {teams.map((t) => <option value={t.id}>{t.name} ({t.owners})</option>)}
+        </select>
+        <span class="tiny dim">Honor system — remembered on this device.</span>
+      </div>
+
+      <div class="card" id="composer" hidden>
+        <div class="card-head"><h2>New post</h2><button class="btn sm secondary" id="cancel-post">Cancel</button></div>
+        <div class="grid grid-2">
+          <div class="field"><label>Shopping (players you'd move)</label><textarea id="offering" maxlength="500" placeholder="e.g. Breece Hall, a WR2 for depth"></textarea></div>
+          <div class="field"><label>Looking for</label><textarea id="seeking" maxlength="500" placeholder="e.g. A top-8 WR, will add a pick-up"></textarea></div>
+        </div>
+        <div class="field"><label>Notes (optional)</label><input type="text" id="notes" maxlength="300" placeholder="Anything else — timing, untouchables, who to DM" /></div>
+        <div class="flex"><button class="btn" id="submit-post">Post it</button><span class="tiny dim" id="post-msg"></span></div>
+      </div>
+
+      <div id="posts" class="grid" style="gap:14px;margin-top:16px"><div class="empty">Loading the block…</div></div>
+
+      <details class="section" id="archive-wrap" hidden>
+        <summary>Archived posts</summary>
+        <div id="archive" class="grid" style="gap:14px;margin-top:12px"></div>
+      </details>
+    </>
+  )}
+
+  <script is:inline define:vars={{ supabaseUrl, supabaseKey, teams }}>
+    (function () {
+      if (!supabaseUrl) return;
+      const H = { apikey: supabaseKey, Authorization: 'Bearer ' + supabaseKey, 'Content-Type': 'application/json' };
+      const teamById = Object.fromEntries(teams.map((t) => [String(t.id), t]));
+      const $ = (id) => document.getElementById(id);
+      const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+      const ago = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 60000); if (m < 1) return 'just now'; if (m < 60) return m + 'm ago'; const h = Math.round(m / 60); if (h < 36) return h + 'h ago'; return Math.round(h / 24) + 'd ago'; };
+      const me = $('me');
+      try { me.value = localStorage.getItem('wsb-team') || ''; } catch {}
+      me.addEventListener('change', () => { try { localStorage.setItem('wsb-team', me.value); } catch {} });
+      const requireTeam = () => { if (!me.value) { alertMsg('Pick your team first.'); me.focus(); return null; } return teamById[me.value]; };
+      let msgTimer;
+      function alertMsg(text, ok) { const el = $('post-msg'); el.textContent = text; el.className = 'tiny ' + (ok ? 'green' : 'red'); clearTimeout(msgTimer); msgTimer = setTimeout(() => (el.textContent = ''), 4000); }
+
+      async function api(path, opts = {}) {
+        const res = await fetch(supabaseUrl + '/rest/v1/' + path, { ...opts, headers: { ...H, ...(opts.headers || {}) } });
+        if (!res.ok) throw new Error((await res.text()) || res.statusText);
+        return res.status === 204 ? null : res.json();
+      }
+
+      $('new-post-btn').addEventListener('click', () => { $('composer').hidden = false; $('offering').focus(); });
+      $('cancel-post').addEventListener('click', () => ($('composer').hidden = true));
+      $('submit-post').addEventListener('click', async () => {
+        const t = requireTeam(); if (!t) return;
+        const offering = $('offering').value.trim(), seeking = $('seeking').value.trim(), notes = $('notes').value.trim();
+        if (!offering || !seeking) return alertMsg('Fill in both what you\'re shopping and what you want.');
+        $('submit-post').disabled = true;
+        try {
+          await api('trade_posts', { method: 'POST', body: JSON.stringify({ team_id: t.id, team_name: t.name, offering, seeking, notes: notes || null }), headers: { Prefer: 'return=minimal' } });
+          $('offering').value = $('seeking').value = $('notes').value = '';
+          $('composer').hidden = true;
+          await load();
+        } catch (e) { alertMsg('Could not post: ' + e.message); }
+        $('submit-post').disabled = false;
+      });
+
+      function logoHtml(t) {
+        const ok = t && /^https?:\/\//.test(t.logo || '');
+        const ini = (t?.name || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+        return ok ? `<img class="logo sm" src="${esc(t.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'logo sm logo-fallback',textContent:'${esc(ini)}'}))">` : `<span class="logo sm logo-fallback">${esc(ini)}</span>`;
+      }
+
+      function postHtml(p, comments, archived) {
+        const t = teamById[String(p.team_id)] || { name: p.team_name, logo: '' };
+        return `<div class="card" data-id="${p.id}">
+          <div class="flex between">
+            <div class="flex" style="gap:10px">${logoHtml(t)}<div><a href="/teams/${p.team_id}" style="color:var(--text);font-weight:700">${esc(p.team_name)}</a><div class="tiny dim">${ago(p.created_at)}${p.status === 'done' ? ' · <span class="green">done</span>' : archived ? ' · expired' : ''}</div></div></div>
+            ${p.status === 'open' && !archived ? `<button class="btn sm secondary mark-done" data-id="${p.id}" data-team="${p.team_id}">Mark done</button>` : ''}
+          </div>
+          <div class="grid grid-2" style="margin-top:12px;gap:12px">
+            <div><div class="tiny dim" style="text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:4px">Shopping</div><div>${esc(p.offering)}</div></div>
+            <div><div class="tiny dim" style="text-transform:uppercase;letter-spacing:.08em;font-weight:700;margin-bottom:4px">Looking for</div><div>${esc(p.seeking)}</div></div>
+          </div>
+          ${p.notes ? `<p class="small muted" style="margin:10px 0 0">${esc(p.notes)}</p>` : ''}
+          <div class="comments" style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px">
+            ${comments.map((c) => `<div class="small" style="padding:6px 0"><b>${esc(c.team_name)}</b> <span class="tiny dim">${ago(c.created_at)}</span><div>${esc(c.body)}</div></div>`).join('')}
+            ${p.status === 'open' && !archived ? `<form class="comment-form flex" data-id="${p.id}" style="margin-top:8px;flex-wrap:nowrap"><input type="text" maxlength="400" placeholder="Make an offer or ask a question…" required style="flex:1"><button class="btn sm" type="submit">Reply</button></form>` : ''}
+          </div>
+        </div>`;
+      }
+
+      async function load() {
+        try {
+          const cutoff = new Date(Date.now() - 14 * 864e5).toISOString();
+          const posts = await api('trade_posts?select=*&order=created_at.desc&limit=100');
+          const ids = posts.map((p) => p.id);
+          const comments = ids.length ? await api(`trade_comments?select=*&post_id=in.(${ids.join(',')})&order=created_at.asc`) : [];
+          const byPost = {};
+          for (const c of comments) (byPost[c.post_id] ||= []).push(c);
+          const live = posts.filter((p) => p.status === 'open' && p.created_at > cutoff);
+          const archived = posts.filter((p) => !(p.status === 'open' && p.created_at > cutoff));
+          $('posts').innerHTML = live.length ? live.map((p) => postHtml(p, byPost[p.id] || [], false)).join('') : '<div class="empty">Nothing on the block. Be the first to shop someone.</div>';
+          $('archive').innerHTML = archived.map((p) => postHtml(p, byPost[p.id] || [], true)).join('');
+          $('archive-wrap').hidden = archived.length === 0;
+        } catch (e) {
+          $('posts').innerHTML = `<div class="empty">Couldn't load the trade block: ${esc(e.message)}</div>`;
+        }
+      }
+
+      document.addEventListener('submit', async (ev) => {
+        const f = ev.target.closest('.comment-form'); if (!f) return;
+        ev.preventDefault();
+        const t = requireTeam(); if (!t) return;
+        const input = f.querySelector('input'); const body = input.value.trim(); if (!body) return;
+        input.disabled = true;
+        try { await api('trade_comments', { method: 'POST', body: JSON.stringify({ post_id: f.dataset.id, team_id: t.id, team_name: t.name, body }), headers: { Prefer: 'return=minimal' } }); await load(); }
+        catch (e) { alertMsg('Could not reply: ' + e.message); input.disabled = false; }
+      });
+      document.addEventListener('click', async (ev) => {
+        const b = ev.target.closest('.mark-done'); if (!b) return;
+        const t = requireTeam(); if (!t) return;
+        if (String(t.id) !== b.dataset.team && !confirm('This isn\'t your post. Mark it done anyway?')) return;
+        try { await api(`trade_posts?id=eq.${b.dataset.id}`, { method: 'PATCH', body: JSON.stringify({ status: 'done' }), headers: { Prefer: 'return=minimal' } }); await load(); }
+        catch (e) { alertMsg('Could not update: ' + e.message); }
+      });
+      load();
+    })();
+  </script>
+</Base>

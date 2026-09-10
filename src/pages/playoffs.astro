@@ -1,0 +1,83 @@
+---
+import Base from '../layouts/Base.astro';
+import TeamCell from '../components/TeamCell.astro';
+import { loadAll } from '../lib/store';
+import { teamById, record, fmtDate } from '../lib/format';
+
+const { snapshot: snap, derived } = await loadAll();
+const odds = [...(derived?.odds ?? [])].sort((a, b) => b.playoff - a.playoff || b.title - a.title);
+const standings = new Map((derived?.standings ?? []).map((s) => [s.teamId, s]));
+const played = derived?.completedWeeks.length ?? 0;
+const remaining = snap ? Math.max(0, snap.regularSeasonWeeks - played) : 0;
+const P = snap?.playoffTeams ?? 6;
+const byes = 2 ** Math.ceil(Math.log2(P)) - P;
+const heat = (v: number) => `background:rgba(61,220,151,${(v / 100) * 0.35})`;
+---
+
+<Base title="Playoff Odds">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">{played ? `Through week ${played} · ${remaining} regular-season week${remaining === 1 ? '' : 's'} left` : 'Preseason'}</div>
+      <h1>Playoff Odds</h1>
+      <p>{derived?.simRuns?.toLocaleString() ?? '10,000'} simulations of the rest of the season. {P} teams make it{byes ? `, top ${byes} get a bye` : ''}. Early in the year the model leans on roster projections; by midseason it's mostly what you've actually scored. <a href="/methodology">Details →</a></p>
+    </div>
+  </div>
+
+  {!snap || !odds.length ? (
+    <div class="empty">The simulation runs after the first sync.</div>
+  ) : (
+    <>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Team</th><th class="num">Record</th><th class="num">Proj. wins</th><th class="num">Avg seed</th><th class="num">Make playoffs</th><th class="num">First-round bye</th><th class="num">Win title</th><th class="num">Finish last</th></tr>
+            </thead>
+            <tbody>
+              {odds.map((o) => {
+                const t = teamById(snap, o.teamId)!;
+                const s = standings.get(o.teamId);
+                return (
+                  <tr>
+                    <td><TeamCell team={t} /></td>
+                    <td class="num">{s ? record(s) : record(t)}</td>
+                    <td class="num">{o.avgWins.toFixed(1)}</td>
+                    <td class="num dim">{o.avgSeed.toFixed(1)}</td>
+                    <td class="num" style={`font-weight:700;${heat(o.playoff)}`}>{o.playoff.toFixed(1)}%</td>
+                    <td class="num" style={heat(o.bye)}>{o.bye.toFixed(1)}%</td>
+                    <td class="num gold" style="font-weight:600">{o.title.toFixed(1)}%</td>
+                    <td class="num" style={`background:rgba(255,107,122,${(o.last / 100) * 0.4})`}>{o.last.toFixed(1)}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p class="tiny dim" style="margin:12px 0 0">Updated {fmtDate(derived?.computedAt, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} PT. Re-simulated on every sync, so odds move as scores come in.</p>
+      </div>
+
+      <div class="grid grid-2 section">
+        <div class="card">
+          <div class="card-head"><h2>Title favorites</h2></div>
+          {[...odds].sort((a, b) => b.title - a.title).slice(0, 6).map((o) => (
+            <div class="bar-row" style="margin:8px 0;grid-template-columns:160px 1fr 50px">
+              <span style="color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{teamById(snap, o.teamId)?.name}</span>
+              <div class="bar gold"><i style={`width:${Math.min(100, o.title * 2.5)}%`} /></div>
+              <b>{o.title.toFixed(1)}%</b>
+            </div>
+          ))}
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Danger zone</h2><span class="sub">Odds of finishing dead last</span></div>
+          {[...odds].sort((a, b) => b.last - a.last).slice(0, 6).map((o) => (
+            <div class="bar-row" style="margin:8px 0;grid-template-columns:160px 1fr 50px">
+              <span style="color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{teamById(snap, o.teamId)?.name}</span>
+              <div class="bar red"><i style={`width:${Math.min(100, o.last * 1.5)}%`} /></div>
+              <b>{o.last.toFixed(1)}%</b>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  )}
+</Base>

@@ -1,0 +1,190 @@
+---
+import Base from '../layouts/Base.astro';
+import TeamCell from '../components/TeamCell.astro';
+import MatchupCard from '../components/MatchupCard.astro';
+import TeamLogo from '../components/TeamLogo.astro';
+import { loadAll } from '../lib/store';
+import { fmt1, fmtDate, movement, teamById, record } from '../lib/format';
+
+const { snapshot: snap, rankings, derived, status } = await loadAll();
+const week = snap?.currentMatchupPeriod ?? 1;
+const thisWeek = snap ? snap.schedule.filter((m) => m.week === week) : [];
+const latestWeekKey = Object.keys(rankings.weeks).map(Number).sort((a, b) => b - a)[0];
+const latest = latestWeekKey !== undefined ? rankings.weeks[String(latestWeekKey)] : null;
+const standings = derived?.standings ?? [];
+const gotwId = derived?.previews.find((p) => p.gameOfWeek && p.week === week)?.matchupId;
+const recentTx = (snap?.transactions ?? []).filter((t) => t.status === 'EXECUTED').slice(0, 8);
+const latestAwardsWeek = Object.keys(rankings.awards).map(Number).sort((a, b) => b - a)[0];
+const awards = latestAwardsWeek !== undefined ? rankings.awards[String(latestAwardsWeek)] : [];
+const inSeason = snap && week <= snap.regularSeasonWeeks;
+const txVerb: Record<string, string> = { WAIVER: 'claimed', FREEAGENT: 'added', TRADE: 'traded', DRAFT: 'drafted' };
+---
+
+<Base title="Home">
+  {!snap ? (
+    <div class="empty">Waiting for the first ESPN sync.</div>
+  ) : (
+    <>
+      <div class="page-head">
+        <div>
+          <div class="eyebrow">{snap.season} season · {inSeason ? `Week ${week}` : week > snap.regularSeasonWeeks ? 'Playoffs' : 'Preseason'}</div>
+          <h1>{snap.leagueName}</h1>
+          <p>Live scores, standings and power rankings straight from ESPN — plus the trade block, weekly awards, playoff odds and league chat.</p>
+        </div>
+        <div class="flex">
+          <a class="btn secondary" href="/power-rankings">Power Rankings</a>
+          <a class="btn" href="/trade-block">Trade Block</a>
+        </div>
+      </div>
+
+      <section class="section" style="margin-top:0">
+        <div class="card-head">
+          <h2>Week {week} scoreboard</h2>
+          <span class="sub">Live scores update every 15 minutes · <a href="/matchups">previews & history</a></span>
+        </div>
+        <div class="grid grid-3">
+          {thisWeek.map((m) => <MatchupCard m={m} snap={snap} live gotw={m.id === gotwId} />)}
+        </div>
+      </section>
+
+      <div class="grid grid-2 section">
+        <div class="card">
+          <div class="card-head">
+            <h2>Standings</h2>
+            <a class="sub" href="/standings">Full table →</a>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th></th><th>Team</th><th class="num">W-L</th><th class="num">PF</th><th class="num">Luck</th></tr></thead>
+              <tbody>
+                {(standings.length ? standings : snap.teams.map((t, i) => ({ teamId: t.id, seed: i + 1, wins: t.wins, losses: t.losses, ties: t.ties, pointsFor: t.pointsFor, luck: 0 }))).map((s) => {
+                  const t = teamById(snap, s.teamId)!;
+                  return (
+                    <tr>
+                      <td class="rank-cell">{s.seed}</td>
+                      <td><TeamCell team={t} size="sm" /></td>
+                      <td class="num">{record(s)}</td>
+                      <td class="num">{fmt1(s.pointsFor)}</td>
+                      <td class:list={['num', s.luck > 0.5 ? 'green' : s.luck < -0.5 ? 'red' : 'dim']}>{s.luck > 0 ? '+' : ''}{s.luck.toFixed(1)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <h2>Power Rankings{latest ? ` · Week ${latest.week}` : ''}</h2>
+            <a class="sub" href="/power-rankings">Full rankings →</a>
+          </div>
+          {latest ? (
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th></th><th>Team</th><th class="num">Score</th><th class="num">Move</th></tr></thead>
+                <tbody>
+                  {latest.entries.map((e) => {
+                    const t = teamById(snap, e.teamId)!;
+                    const mv = movement(e.prevRank, e.rank);
+                    return (
+                      <tr>
+                        <td class="rank-cell">{e.rank}</td>
+                        <td><TeamCell team={t} size="sm" sub={e.grade ? `Draft grade ${e.grade}` : undefined} /></td>
+                        <td class="num">{fmt1(e.score)}</td>
+                        <td class="num"><span class={mv.cls}>{mv.text}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p class="muted">Rankings appear after the draft grades are computed.</p>
+          )}
+        </div>
+      </div>
+
+      {awards.length > 0 && (
+        <section class="section">
+          <div class="card-head">
+            <h2>Week {latestAwardsWeek} awards</h2>
+            <a class="sub" href="/awards">All weeks →</a>
+          </div>
+          <div class="grid grid-3">
+            {awards.map((a) => {
+              const t = teamById(snap, a.teamId)!;
+              return (
+                <div class="award">
+                  <div class="emoji">{a.emoji}</div>
+                  <div>
+                    <div class="title">{a.title}</div>
+                    <div class="who"><a href={`/teams/${t.id}`}>{t.name}</a></div>
+                    <div class="detail">{a.detail}</div>
+                  </div>
+                  <div class="value">{a.value}</div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <div class="grid grid-2 section">
+        <div class="card">
+          <div class="card-head"><h2>Recent moves</h2><span class="sub">Waivers, free agents, trades</span></div>
+          {recentTx.length === 0 ? (
+            <p class="muted">No transactions yet — the waiver wire is quiet.</p>
+          ) : (
+            <ul style="list-style:none;padding:0;margin:0">
+              {recentTx.map((tx) => {
+                const t = teamById(snap, tx.teamId);
+                const adds = tx.items.filter((i) => i.type === 'ADD' || (i.type === 'TRADE' && i.toTeamId === tx.teamId)).map((i) => i.playerName);
+                const drops = tx.items.filter((i) => i.type === 'DROP' || (i.type === 'TRADE' && i.fromTeamId === tx.teamId)).map((i) => i.playerName);
+                return (
+                  <li class="flex" style="padding:8px 0;border-bottom:1px solid var(--border)">
+                    {t && <TeamLogo team={t} size="sm" />}
+                    <div class="small" style="flex:1">
+                      <a href={`/teams/${t?.id}`} style="color:var(--text);font-weight:600">{t?.name}</a>
+                      <span class="muted"> {txVerb[tx.type] ?? tx.type.toLowerCase()} </span>
+                      {adds.length > 0 && <span class="green">{adds.join(', ')}</span>}
+                      {drops.length > 0 && <span class="muted"> · dropped <span class="red">{drops.join(', ')}</span></span>}
+                      {tx.bid > 0 && <span class="dim"> · ${tx.bid}</span>}
+                    </div>
+                    <span class="tiny dim">{fmtDate(tx.date)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2>Playoff picture</h2><a class="sub" href="/playoffs">Odds & simulation →</a></div>
+          {derived?.odds ? (
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Team</th><th class="num">Playoffs</th><th class="num">Bye</th><th class="num">Title</th></tr></thead>
+                <tbody>
+                  {[...derived.odds].sort((a, b) => b.playoff - a.playoff || b.title - a.title).slice(0, 8).map((o) => {
+                    const t = teamById(snap, o.teamId)!;
+                    return (
+                      <tr>
+                        <td><TeamCell team={t} size="sm" /></td>
+                        <td class="num">{Math.round(o.playoff)}%</td>
+                        <td class="num dim">{Math.round(o.bye)}%</td>
+                        <td class="num gold">{o.title.toFixed(1)}%</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p class="muted">Simulation runs after the first sync.</p>
+          )}
+        </div>
+      </div>
+    </>
+  )}
+</Base>

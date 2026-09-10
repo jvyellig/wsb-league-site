@@ -1,0 +1,39 @@
+---
+import type { Matchup, Snapshot } from '../lib/types';
+import TeamLogo from './TeamLogo.astro';
+import { fmt1, teamById } from '../lib/format';
+interface Props {
+  m: Matchup;
+  snap: Snapshot;
+  live?: boolean; // current week: show live score + projection
+  gotw?: boolean;
+}
+const { m, snap, live = false, gotw = false } = Astro.props;
+const home = teamById(snap, m.home.teamId);
+const away = m.away ? teamById(snap, m.away.teamId) : undefined;
+const decided = m.winner !== 'UNDECIDED';
+const hs = live ? m.home.live : m.home.points;
+const as = m.away ? (live ? m.away.live : m.away.points) : 0;
+const rows = [
+  { t: home, side: m.home, score: hs, win: m.winner === 'HOME', lose: m.winner === 'AWAY' },
+  ...(away && m.away ? [{ t: away, side: m.away, score: as, win: m.winner === 'AWAY', lose: m.winner === 'HOME' }] : []),
+];
+---
+
+<div class:list={['matchup', { gotw }]}>
+  {gotw && <div class="tiny gold" style="font-weight:700;letter-spacing:.1em;margin-bottom:4px">★ GAME OF THE WEEK</div>}
+  {rows.map((r) => (
+    <div class:list={['row', { winner: decided && r.win, loser: decided && r.lose }]}>
+      {r.t && <TeamLogo team={r.t} size="sm" />}
+      <div class="name">
+        <a href={`/teams/${r.t?.id}`} style="color:inherit">{r.t?.name ?? 'TBD'}</a>
+        <small>{r.t?.wins}-{r.t?.losses}{live && r.side.projected ? ` · proj ${fmt1(r.side.projected)}` : ''}</small>
+      </div>
+      <div class="score">{fmt1(r.score)}</div>
+    </div>
+  ))}
+  {!away && <div class="meta"><span>Bye week</span></div>}
+  {away && live && !decided && typeof m.home.winProb === 'number' && (
+    <div class="meta"><span>Win prob: {home?.abbrev} {Math.round(m.home.winProb * 100)}%</span><span>{away?.abbrev} {Math.round(100 - m.home.winProb * 100)}%</span></div>
+  )}
+</div>

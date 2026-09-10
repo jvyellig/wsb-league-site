@@ -1,0 +1,122 @@
+---
+import Base from '../layouts/Base.astro';
+import TeamLogo from '../components/TeamLogo.astro';
+import { loadAll } from '../lib/store';
+import { fmt1, movement, teamById, record } from '../lib/format';
+import { WEIGHTS } from '../lib/constants';
+
+const { snapshot: snap, rankings } = await loadAll();
+const weekKeys = Object.keys(rankings.weeks).map(Number).sort((a, b) => a - b);
+const requested = Astro.url.searchParams.get('week');
+const week = requested !== null && weekKeys.includes(Number(requested)) ? Number(requested) : weekKeys[weekKeys.length - 1];
+const wr = week !== undefined ? rankings.weeks[String(week)] : null;
+const compLabels: Record<string, string> = { results: 'Results', scoring: 'Scoring', roster: 'Roster', activity: 'Moves' };
+const compColors: Record<string, string> = { results: '', scoring: 'gold', roster: 'purple', activity: 'red' };
+---
+
+<Base title="Power Rankings">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">{wr ? (wr.week === 0 ? 'Week 0 · Draft grades' : `After week ${wr.week}`) : 'Not yet available'}</div>
+      <h1>Power Rankings</h1>
+      <p>
+        {wr?.week === 0
+          ? 'Pre-season rankings are draft grades: projected value over replacement for every pick, starters at full weight and bench depth at 35%.'
+          : 'A weighted blend of results (35%), scoring (35%), roster strength (20%) and productive moves (10%), with the draft grade fading out over the first six weeks.'}
+        {' '}<a href="/methodology">Argue with the methodology →</a>
+      </p>
+    </div>
+  </div>
+
+  {weekKeys.length > 1 && (
+    <div class="week-tabs">
+      {weekKeys.map((w) => <a href={`/power-rankings?week=${w}`} class:list={{ active: w === week }}>{w === 0 ? 'Draft' : `Wk ${w}`}</a>)}
+    </div>
+  )}
+
+  {!snap || !wr ? (
+    <div class="empty">Rankings will appear once the draft grades are computed on the first sync.</div>
+  ) : (
+    <div class="grid" style="gap:12px">
+      {wr.entries.map((e) => {
+        const t = teamById(snap, e.teamId)!;
+        const mv = movement(e.prevRank, e.rank);
+        const comps = Object.entries(e.components).filter(([k]) => k !== 'draft');
+        return (
+          <div class="card" style="padding:16px 20px">
+            <div style="display:grid;grid-template-columns:56px 1fr auto;gap:16px;align-items:center">
+              <div style="text-align:center">
+                <div style="font-family:var(--font-display);font-size:1.9rem;font-weight:800;line-height:1">{e.rank}</div>
+                <div class={mv.cls}>{mv.text}</div>
+              </div>
+              <div style="min-width:0">
+                <div class="flex" style="gap:10px">
+                  <TeamLogo team={t} />
+                  <div style="min-width:0">
+                    <div style="font-weight:700;font-size:1.05rem"><a href={`/teams/${t.id}`} style="color:var(--text)">{t.name}</a></div>
+                    <div class="tiny dim">{t.owners.join(' & ')} · {record(t)}{e.grade ? ` · Draft grade ${e.grade}` : ''}</div>
+                  </div>
+                </div>
+                <p class="small muted" style="margin:10px 0 0">{e.blurb}</p>
+              </div>
+              <div style="text-align:right;min-width:150px">
+                <div class="tiny dim" style="text-transform:uppercase;letter-spacing:.08em;font-weight:600">{wr.week === 0 ? 'Draft value' : 'Power score'}</div>
+                <div style="font-family:var(--font-display);font-size:1.5rem;font-weight:700">{fmt1(wr.week === 0 ? e.components.draft?.raw ?? e.score : e.score)}</div>
+                {wr.week === 0 && <div class="tiny dim">scaled {fmt1(e.score)} / 100</div>}
+                {comps.length > 0 && (
+                  <div style="display:grid;gap:4px;margin-top:6px">
+                    {comps.map(([k, c]) => (
+                      <div class="bar-row" style="grid-template-columns:56px 1fr 30px;font-size:.72rem">
+                        <span>{compLabels[k] ?? k}</span>
+                        <div class:list={['bar', compColors[k]]}><i style={`width:${c.scaled}%`} /></div>
+                        <b>{Math.round(c.scaled)}</b>
+                      </div>
+                    ))}
+                    {e.draftPrior !== null && e.draftWeight > 0 && (
+                      <div class="bar-row" style="grid-template-columns:56px 1fr 30px;font-size:.72rem">
+                        <span title="Draft grade, fading out">Draft ({Math.round(e.draftWeight * 100)}%)</span>
+                        <div class="bar"><i style={`width:${e.draftPrior}%;opacity:.5`} /></div>
+                        <b>{Math.round(e.draftPrior)}</b>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  )}
+
+  {wr && wr.week > 0 && (
+    <div class="card section">
+      <div class="card-head"><h2>Show your work · week {wr.week}</h2><span class="sub">Raw component values and their 0–100 league scaling</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>Team</th>
+              {Object.keys(WEIGHTS).map((k) => <th class="num">{compLabels[k]} ({Math.round(WEIGHTS[k as keyof typeof WEIGHTS] * 100)}%)</th>)}
+              <th class="num">Draft prior</th><th class="num">Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            {wr.entries.map((e) => (
+              <tr>
+                <td class="rank-cell">{e.rank}</td>
+                <td style="font-weight:600">{teamById(snap, e.teamId)?.name}</td>
+                {Object.keys(WEIGHTS).map((k) => {
+                  const c = e.components[k];
+                  return <td class="num">{c ? <>{Math.round(c.scaled)} <span class="dim tiny">({k === 'results' ? (c.raw * 100).toFixed(0) + '%' : fmt1(c.raw)})</span></> : '—'}</td>;
+                })}
+                <td class="num dim">{e.draftPrior !== null ? `${Math.round(e.draftPrior)} × ${Math.round(e.draftWeight * 100)}%` : '—'}</td>
+                <td class="num" style="font-weight:700">{fmt1(e.score)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )}
+</Base>

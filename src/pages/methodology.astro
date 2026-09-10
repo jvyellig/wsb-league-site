@@ -1,0 +1,64 @@
+---
+import Base from '../layouts/Base.astro';
+import { loadAll } from '../lib/store';
+import { REPLACEMENT_RANK, WEIGHTS, BENCH_VOR_WEIGHT, DRAFT_PRIOR_WEEKS } from '../lib/constants';
+const { draft } = await loadAll();
+---
+
+<Base title="Methodology">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Show your work</div>
+      <h1>How the power rankings work</h1>
+      <p>Every number on the rankings page is computed from ESPN data with the formulas below. Nothing is hand-adjusted. If you think the weights are wrong, that's what the <a href="/chat">chat</a> is for.</p>
+    </div>
+  </div>
+
+  <div class="card prose">
+    <h2>Week 0 — draft grades</h2>
+    <p>Before any games are played, the rankings are pure draft grades built on <strong>value over replacement (VOR)</strong>. For every drafted player we take ESPN's full-season projection and subtract the projection of the "replacement-level" player at his position — the best guy you could reasonably expect to find on waivers.</p>
+    <p>Replacement level is defined by depth: dedicated starters across 12 teams, plus each position's share of the FLEX, plus a small streaming buffer.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Position</th><th class="num">Replacement rank</th><th class="num">Baseline (proj. pts)</th><th>Who that was on draft day</th></tr></thead>
+        <tbody>
+          {Object.entries(REPLACEMENT_RANK).map(([pos, rank]) => (
+            <tr><td>{pos}</td><td class="num">{pos}{rank}</td><td class="num">{draft?.baselines[pos]?.points ?? '—'}</td><td class="dim">{draft?.baselines[pos]?.player ?? '—'}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:14px">A team's draft score is:</p>
+    <blockquote>Draft score = Σ VOR of the best possible starting lineup from the draft picks + {BENCH_VOR_WEIGHT} × Σ positive VOR on the bench</blockquote>
+    <p>VOR is floored at zero — a replacement-level player is always available, so no pick can be worth less than nothing. Letter grades are assigned on a curve within the league. Each pick is also compared to the "perfect draft": the VOR the n-th overall pick would have carried if everyone had drafted in strict VOR order. A positive gap is a steal, a negative gap is a reach. Those are on the <a href="/draft">Draft Recap</a>.</p>
+
+    <h2>Weeks 1+ — the power score</h2>
+    <p>Once games are played, four components are computed for every team, each scaled 0–100 within the league (best team = 100, worst = 0), then blended:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Component</th><th class="num">Weight</th><th>What it measures</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Results</strong></td><td class="num">{Math.round(WEIGHTS.results * 100)}%</td><td>Half actual win percentage, half <em>all-play</em> win percentage (your record if you had played every other team every week). Real wins count, but schedule luck is diluted.</td></tr>
+          <tr><td><strong>Scoring</strong></td><td class="num">{Math.round(WEIGHTS.scoring * 100)}%</td><td>60% season points-per-game, 40% points-per-game over the last three weeks. Hot and cold streaks show up without dominating.</td></tr>
+          <tr><td><strong>Roster strength</strong></td><td class="num">{Math.round(WEIGHTS.roster * 100)}%</td><td>ESPN's projected per-game points for your best possible lineup right now. Players who are Out or on IR count zero, Doubtful counts half, Questionable 85%. This is how injuries, byes and smart pickups move the needle.</td></tr>
+          <tr><td><strong>Productive moves</strong></td><td class="num">{Math.round(WEIGHTS.activity * 100)}%</td><td>Points actually scored in your starting lineup by players you acquired via waivers, free agency or trade since the draft. Churning your bench earns nothing; moves that produce do.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <blockquote>Blend = 0.35 × Results + 0.35 × Scoring + 0.20 × Roster + 0.10 × Moves</blockquote>
+    <h3>The draft grade fades out</h3>
+    <p>One week of games is a small sample, so the draft grade stays in the formula early and disappears by week {DRAFT_PRIOR_WEEKS}:</p>
+    <blockquote>Power score (week w) = (1 − p) × Blend + p × Draft score, where p = max(0, ({DRAFT_PRIOR_WEEKS} − w) / {DRAFT_PRIOR_WEEKS})</blockquote>
+    <p>So the draft is worth {Math.round(((DRAFT_PRIOR_WEEKS - 1) / DRAFT_PRIOR_WEEKS) * 100)}% of the score after week 1, {Math.round(((DRAFT_PRIOR_WEEKS - 3) / DRAFT_PRIOR_WEEKS) * 100)}% after week 3, and nothing from week {DRAFT_PRIOR_WEEKS} on. Ties are broken by the Results component, then points per game.</p>
+
+    <h2>Everything else on the site</h2>
+    <h3>Luck</h3>
+    <p>Expected wins = your all-play wins divided by 11 (ties count half). Luck = actual wins − expected wins. Positive means the schedule has been kind.</p>
+    <h3>Playoff odds</h3>
+    <p>10,000 simulations of the remaining regular season. Each team's weekly score is drawn from a normal distribution whose mean is its observed average shrunk toward its roster projection (a four-game prior, so early-season odds lean on roster strength) and whose spread is its observed variance blended with a league-typical ±22 points. Seeds follow the league's tiebreak (record, then total points); the bracket is played out with the same model, no reseeding. Odds refresh every sync.</p>
+    <h3>Weekly awards</h3>
+    <p>Computed from the final box scores each Tuesday: highest and lowest score, largest and smallest winning margin, the biggest gap between a team's optimal lineup and what it actually started (Bench Blunder), and the most points from acquired players in a starting lineup (Waiver Wizard).</p>
+    <h3>Blurbs</h3>
+    <p>The one-liners under each team are generated from the data — result, week score rank, all-play context, top performer, record. No human bias, only algorithmic bias.</p>
+  </div>
+</Base>

@@ -1,0 +1,17 @@
+---
+import type { Team } from '../lib/types';
+import { initials } from '../lib/format';
+interface Props {
+  team: Team;
+  size?: 'sm' | 'md' | 'lg';
+}
+const { team, size = 'md' } = Astro.props;
+const cls = `logo ${size === 'md' ? '' : size}`.trim();
+const ok = team.logo && /^https?:\/\//.test(team.logo);
+---
+
+{ok ? (
+  <img class={cls} src={team.logo} alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:this.className+' logo-fallback',textContent:this.dataset.i}))" data-i={initials(team.name)} />
+) : (
+  <span class={`${cls} logo-fallback`}>{initials(team.name)}</span>
+)}

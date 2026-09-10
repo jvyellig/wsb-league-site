@@ -1,0 +1,103 @@
+---
+import '../styles/global.css';
+import { getSnapshot, getStatus } from '../lib/store';
+import { timeAgo, fmtDate } from '../lib/format';
+
+interface Props {
+  title: string;
+  description?: string;
+  noCache?: boolean;
+  wide?: boolean;
+}
+const { title, description = 'WSB Generations League — standings, power rankings, trade block and more.', noCache = false } = Astro.props;
+
+const [snapshot, status] = await Promise.all([getSnapshot(), getStatus()]);
+const leagueName = snapshot?.leagueName ?? 'WSB Generations League';
+const path = Astro.url.pathname;
+const nav = [
+  ['/', 'Home'],
+  ['/standings', 'Standings'],
+  ['/power-rankings', 'Power Rankings'],
+  ['/matchups', 'Matchups'],
+  ['/playoffs', 'Playoff Odds'],
+  ['/awards', 'Awards'],
+  ['/draft', 'Draft'],
+  ['/trade-block', 'Trade Block'],
+  ['/chat', 'Chat'],
+];
+const isActive = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
+
+const staleMs = status.lastSuccess ? Date.now() - new Date(status.lastSuccess).getTime() : Infinity;
+const stale = staleMs > 3 * 60 * 60 * 1000; // > 3 hours without a successful sync
+
+if (!noCache) {
+  Astro.response.headers.set('Cache-Control', 'public, max-age=0, must-revalidate');
+  Astro.response.headers.set('Netlify-CDN-Cache-Control', 'public, s-maxage=120, stale-while-revalidate=600');
+} else {
+  Astro.response.headers.set('Cache-Control', 'private, no-store');
+}
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title} · {leagueName}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content="noindex" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header class="nav">
+      <div class="wrap">
+        <a class="brand" href="/"><span class="brand-mark">WSB</span><span>{leagueName.replace(/ League$/, '')}</span></a>
+        <nav class="nav-links">
+          {nav.map(([href, label]) => <a href={href} class:list={{ active: isActive(href) }}>{label}</a>)}
+        </nav>
+      </div>
+    </header>
+
+    {status.authExpired && (
+      <div class="banner error">
+        <div class="wrap">
+          <strong>ESPN connection expired.</strong>
+          <span>
+            Data is frozen as of {fmtDate(status.lastSuccess, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}. The commissioner needs to refresh the
+            <code>espn_s2</code> cookie at <a href="/admin">/admin</a>.
+          </span>
+        </div>
+      </div>
+    )}
+    {!status.authExpired && stale && snapshot && (
+      <div class="banner warn">
+        <div class="wrap">
+          <strong>Data may be stale.</strong>
+          <span>Last successful ESPN sync {timeAgo(status.lastSuccess)}{status.lastError ? ` — ${status.lastError}` : ''}.</span>
+        </div>
+      </div>
+    )}
+    {!snapshot && (
+      <div class="banner warn">
+        <div class="wrap"><strong>No league data yet.</strong><span>The first ESPN sync hasn't run. Trigger one from <a href="/admin">/admin</a>.</span></div>
+      </div>
+    )}
+
+    <main>
+      <div class="wrap">
+        <slot />
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap">
+        <span>{leagueName} · {snapshot?.season ?? new Date().getFullYear()} season</span>
+        <span>
+          ESPN data updated {timeAgo(status.lastSuccess)} · refreshes every 15 min · <a href="/methodology">how rankings work</a> · <a href="/admin">admin</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

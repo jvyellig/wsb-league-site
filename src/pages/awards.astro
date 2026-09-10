@@ -1,0 +1,72 @@
+---
+import Base from '../layouts/Base.astro';
+import TeamLogo from '../components/TeamLogo.astro';
+import { loadAll } from '../lib/store';
+import { teamById } from '../lib/format';
+
+const { snapshot: snap, rankings } = await loadAll();
+const weeks = Object.keys(rankings.awards).map(Number).sort((a, b) => b - a);
+// Season tallies
+const tally = new Map<number, Record<string, number>>();
+for (const w of weeks) for (const a of rankings.awards[String(w)]) {
+  const t = tally.get(a.teamId) ?? {};
+  t[a.key] = (t[a.key] ?? 0) + 1;
+  tally.set(a.teamId, t);
+}
+const keys = [['top', '🔥 Top Gun'], ['low', '🚽 Toilet Bowl'], ['blowout', '💥 Blowout'], ['close', '😰 Nail-biter'], ['bench', '🪑 Bench Blunder'], ['waiver', '🧙 Waiver Wizard']];
+---
+
+<Base title="Weekly Awards">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Superlatives</div>
+      <h1>Weekly Awards</h1>
+      <p>Handed out automatically every Tuesday morning once the box scores are final. Bench Blunder is the gap between the best lineup you could have started and the one you did.</p>
+    </div>
+  </div>
+
+  {!snap || weeks.length === 0 ? (
+    <div class="empty">Awards start after week 1 is in the books.</div>
+  ) : (
+    <>
+      <div class="card" style="margin-bottom:24px">
+        <div class="card-head"><h2>Season trophy case</h2><span class="sub">{weeks.length} week{weeks.length === 1 ? '' : 's'}</span></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Team</th>{keys.map(([, l]) => <th class="num">{l}</th>)}</tr></thead>
+            <tbody>
+              {[...tally.entries()].sort((a, b) => Object.values(b[1]).reduce((x, y) => x + y, 0) - Object.values(a[1]).reduce((x, y) => x + y, 0)).map(([id, t]) => (
+                <tr>
+                  <td style="font-weight:600"><div class="flex" style="gap:8px"><TeamLogo team={teamById(snap, id)!} size="sm" />{teamById(snap, id)?.name}</div></td>
+                  {keys.map(([k]) => <td class="num">{t[k] ? <b>{t[k]}</b> : <span class="dim">·</span>}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {weeks.map((w) => (
+        <section class="section" style="margin-top:20px">
+          <h2>Week {w}</h2>
+          <div class="grid grid-3">
+            {rankings.awards[String(w)].map((a) => {
+              const t = teamById(snap, a.teamId)!;
+              return (
+                <div class="award">
+                  <div class="emoji">{a.emoji}</div>
+                  <div style="min-width:0">
+                    <div class="title">{a.title}</div>
+                    <div class="who"><a href={`/teams/${t.id}`}>{t.name}</a></div>
+                    <div class="detail">{a.detail}</div>
+                  </div>
+                  <div class="value">{a.value}</div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </>
+  )}
+</Base>

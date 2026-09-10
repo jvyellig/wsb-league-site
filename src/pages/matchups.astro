@@ -1,0 +1,77 @@
+---
+import Base from '../layouts/Base.astro';
+import MatchupCard from '../components/MatchupCard.astro';
+import TeamLogo from '../components/TeamLogo.astro';
+import { loadAll } from '../lib/store';
+import { fmt1, teamById } from '../lib/format';
+
+const { snapshot: snap, derived } = await loadAll();
+const current = snap?.currentMatchupPeriod ?? 1;
+const allWeeks = snap ? [...new Set(snap.schedule.map((m) => m.week))].sort((a, b) => a - b) : [];
+const requested = Number(Astro.url.searchParams.get('week'));
+const week = allWeeks.includes(requested) ? requested : current;
+const matchups = snap ? snap.schedule.filter((m) => m.week === week) : [];
+const previews = week === current ? derived?.previews ?? [] : [];
+const isFuture = week > current;
+---
+
+<Base title="Matchups">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">{week === current ? 'This week' : week < current ? 'Results' : 'Upcoming'}</div>
+      <h1>Week {week} matchups</h1>
+      <p>{week === current ? 'Projections, key players, injury flags and series history for every game this week. Scores go live as games kick off.' : week < current ? 'Final scores.' : 'Future schedule — projections appear once the week is current.'}</p>
+    </div>
+  </div>
+
+  <div class="week-tabs">
+    {allWeeks.map((w) => <a href={`/matchups?week=${w}`} class:list={{ active: w === week }}>{w}{snap && w > snap.regularSeasonWeeks ? '*' : ''}</a>)}
+  </div>
+
+  {!snap ? (
+    <div class="empty">Waiting for the first ESPN sync.</div>
+  ) : previews.length ? (
+    <div class="grid grid-2">
+      {previews.map((p) => {
+        const m = matchups.find((x) => x.id === p.matchupId)!;
+        const home = teamById(snap, p.home.teamId)!;
+        const away = p.away ? teamById(snap, p.away.teamId) : undefined;
+        const sides = [p.home, p.away].filter(Boolean) as (typeof p.home)[];
+        return (
+          <div class:list={['card', { gotw: p.gameOfWeek }]} style={p.gameOfWeek ? 'border-color:rgba(245,196,81,.5)' : ''}>
+            {p.gameOfWeek && <div class="tiny gold" style="font-weight:700;letter-spacing:.1em;margin-bottom:8px">★ GAME OF THE WEEK</div>}
+            <MatchupCard m={m} snap={snap} live />
+            {away && (
+              <>
+                <div class="grid grid-2" style="margin-top:14px;gap:12px">
+                  {sides.map((s) => {
+                    const t = teamById(snap, s.teamId)!;
+                    return (
+                      <div>
+                        <div class="flex" style="gap:8px;margin-bottom:6px"><TeamLogo team={t} size="sm" /><div class="small" style="font-weight:600">{t.abbrev}</div><span class="tiny dim">{s.record} · {fmt1(s.ppg)} ppg{s.powerRank ? ` · PR #${s.powerRank}` : ''}</span></div>
+                        <ul class="tiny" style="margin:0;padding-left:16px;color:var(--muted)">
+                          {s.keyPlayers.map((k) => <li>{k.name} <span class="dim">{k.pos} · {fmt1(k.proj)}</span></li>)}
+                        </ul>
+                        {s.questionable.length > 0 && <div class="tiny" style="margin-top:6px;color:var(--gold)">⚠ {s.questionable.join(', ')}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div class="flex between tiny dim" style="margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
+                  <span>Edge: <b class:list={[p.edge > 0 ? 'green' : p.edge < 0 ? 'red' : 'dim']}>{p.edge > 0 ? home.abbrev : away.abbrev} by {fmt1(Math.abs(p.edge))}</b></span>
+                  <span>Series {home.abbrev} {p.series.homeWins}–{p.series.awayWins}{p.series.ties ? `–${p.series.ties}` : ''} {away.abbrev}{p.series.lastMeeting ? ` · last: ${p.series.lastMeeting}` : ''}</span>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  ) : (
+    <div class="grid grid-3">
+      {matchups.map((m) => <MatchupCard m={m} snap={snap} live={week === current} />)}
+      {isFuture && matchups.length === 0 && <div class="empty">Schedule not published yet.</div>}
+    </div>
+  )}
+  {snap && week > snap.regularSeasonWeeks && <p class="tiny dim" style="margin-top:14px">* Playoff week.</p>}
+</Base>

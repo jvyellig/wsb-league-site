@@ -1,0 +1,105 @@
+---
+import Base from '../layouts/Base.astro';
+import TeamCell from '../components/TeamCell.astro';
+import TeamLogo from '../components/TeamLogo.astro';
+import { loadAll } from '../lib/store';
+import { fmt1, posClass, teamById, fmtDate } from '../lib/format';
+
+const { snapshot: snap, draft } = await loadAll();
+const steals = draft ? [...draft.picks].sort((a, b) => b.delta - a.delta).slice(0, 10) : [];
+const reaches = draft ? [...draft.picks].sort((a, b) => a.delta - b.delta).slice(0, 10) : [];
+const rounds = draft ? [...new Set(draft.picks.map((p) => p.round))].sort((a, b) => a - b) : [];
+const view = Astro.url.searchParams.get('view') === 'board' ? 'board' : 'grades';
+---
+
+<Base title="Draft Recap">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">{snap?.season} draft{draft ? ` · graded ${fmtDate(draft.computedAt)}` : ''}</div>
+      <h1>Draft Recap</h1>
+      <p>Grades use value over replacement (VOR): each pick's projected points minus the replacement-level player at his position. "vs slot" compares a pick to what that draft slot was worth in a perfect VOR-order draft. <a href="/methodology">Full method →</a></p>
+    </div>
+    <div class="week-tabs" style="margin:0">
+      <a href="/draft" class:list={{ active: view === 'grades' }}>Grades</a>
+      <a href="/draft?view=board" class:list={{ active: view === 'board' }}>Full board</a>
+    </div>
+  </div>
+
+  {!snap || !draft ? (
+    <div class="empty">Draft grades are computed on the first sync after the draft.</div>
+  ) : view === 'grades' ? (
+    <>
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>#</th><th>Team</th><th class="num">Grade</th><th class="num">Starter VOR</th><th class="num">Bench VOR</th><th class="num">Score</th><th>Best value</th><th>Biggest reach</th></tr></thead>
+            <tbody>
+              {draft.grades.map((g) => (
+                <tr>
+                  <td class="rank-cell">{g.rank}</td>
+                  <td><TeamCell team={teamById(snap, g.teamId)!} /></td>
+                  <td class="num"><span class:list={['pill', g.grade.startsWith('A') ? 'green' : g.grade.startsWith('B') ? 'blue' : 'red']} style="font-size:.9rem">{g.grade}</span></td>
+                  <td class="num">{fmt1(g.starterVor)}</td>
+                  <td class="num dim">{fmt1(g.benchVor)}</td>
+                  <td class="num" style="font-weight:700">{fmt1(g.total)}</td>
+                  <td class="small">{g.bestPick ? <><b>{g.bestPick.name}</b> <span class="dim">#{g.bestPick.overall}</span> <span class="green">+{fmt1(g.bestPick.delta)}</span></> : '—'}</td>
+                  <td class="small">{g.worstPick ? <><b>{g.worstPick.name}</b> <span class="dim">#{g.worstPick.overall}</span> <span class="red">{fmt1(g.worstPick.delta)}</span></> : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid grid-2 section">
+        <div class="card">
+          <div class="card-head"><h2>Biggest steals</h2><span class="sub">VOR above the pick slot</span></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Pick</th><th>Player</th><th>Team</th><th class="num">VOR</th><th class="num">vs slot</th></tr></thead>
+            <tbody>{steals.map((p) => <tr><td class="dim">{p.round}.{p.pick}</td><td><span class={posClass(p.pos)}>{p.pos}</span> <b style="margin-left:4px">{p.name}</b></td><td class="small"><div class="flex" style="gap:6px"><TeamLogo team={teamById(snap, p.teamId)!} size="sm" />{teamById(snap, p.teamId)?.abbrev}</div></td><td class="num">{fmt1(p.vor)}</td><td class="num green">+{fmt1(p.delta)}</td></tr>)}</tbody>
+          </table></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h2>Biggest reaches</h2><span class="sub">VOR below the pick slot</span></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Pick</th><th>Player</th><th>Team</th><th class="num">VOR</th><th class="num">vs slot</th></tr></thead>
+            <tbody>{reaches.map((p) => <tr><td class="dim">{p.round}.{p.pick}</td><td><span class={posClass(p.pos)}>{p.pos}</span> <b style="margin-left:4px">{p.name}</b></td><td class="small"><div class="flex" style="gap:6px"><TeamLogo team={teamById(snap, p.teamId)!} size="sm" />{teamById(snap, p.teamId)?.abbrev}</div></td><td class="num">{fmt1(p.vor)}</td><td class="num red">{fmt1(p.delta)}</td></tr>)}</tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div class="card section">
+        <div class="card-head"><h2>Replacement baselines</h2><span class="sub">The projected points a waiver-wire starter was worth on draft day</span></div>
+        <div class="stats">
+          {Object.entries(draft.baselines).map(([pos, b]) => <div class="stat"><div class="label">{pos}{b.rank}</div><div class="value">{fmt1(b.points)}</div><div class="tiny dim">{b.player}</div></div>)}
+        </div>
+      </div>
+    </>
+  ) : (
+    <div class="card">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Pick</th><th>Team</th><th>Player</th><th class="num">ADP</th><th class="num">Proj</th><th class="num">VOR</th><th class="num">vs slot</th></tr></thead>
+          <tbody>
+            {rounds.map((r) => (
+              <>
+                <tr><td colspan="7" style="background:var(--bg-2);color:var(--dim);font-weight:700;font-size:.75rem;letter-spacing:.1em">ROUND {r}</td></tr>
+                {draft.picks.filter((p) => p.round === r).map((p) => (
+                  <tr>
+                    <td class="dim">{p.overall}</td>
+                    <td class="small"><div class="flex" style="gap:6px;flex-wrap:nowrap"><TeamLogo team={teamById(snap, p.teamId)!} size="sm" /><span>{teamById(snap, p.teamId)?.abbrev}</span></div></td>
+                    <td><span class={posClass(p.pos)}>{p.pos}</span> <b style="margin-left:4px">{p.name}</b> <span class="dim tiny">{p.proTeam}</span>{p.autoDraft && <span class="tiny dim"> · auto</span>}</td>
+                    <td class="num dim">{p.adp ? p.adp.toFixed(1) : '—'}</td>
+                    <td class="num">{fmt1(p.proj)}</td>
+                    <td class="num">{fmt1(p.vor)}</td>
+                    <td class:list={['num', p.delta > 5 ? 'green' : p.delta < -5 ? 'red' : 'dim']}>{p.delta > 0 ? '+' : ''}{fmt1(p.delta)}</td>
+                  </tr>
+                ))}
+              </>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )}
+</Base>

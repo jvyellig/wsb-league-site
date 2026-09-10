@@ -1,0 +1,30 @@
+{
+  "name": "wsb",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "astro dev",
+    "build": "astro build",
+    "sync": "tsx scripts/local-sync.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@astrojs/netlify": "^8.2.5",
+    "@netlify/blobs": "^10.7.13",
+    "@netlify/functions": "^6.0.0",
+    "astro": "^7.3.2",
+    "marked": "^18.0.12"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@types/node": "^22.20.2",
+    "playwright": "^1.63.0",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  },
+  "type": "module"
+}

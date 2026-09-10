@@ -1,0 +1,18 @@
+---
+import type { Team } from '../lib/types';
+import TeamLogo from './TeamLogo.astro';
+interface Props {
+  team: Team;
+  sub?: string;
+  size?: 'sm' | 'md';
+}
+const { team, sub, size = 'md' } = Astro.props;
+---
+
+<div class="team-cell">
+  <TeamLogo team={team} size={size} />
+  <div>
+    <a href={`/teams/${team.id}`}>{team.name}</a>
+    <small>{sub ?? team.owners.join(' & ')}</small>
+  </div>
+</div>
