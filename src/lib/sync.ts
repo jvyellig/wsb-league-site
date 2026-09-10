@@ -13,7 +13,7 @@ import { postDiscord } from './discord';
 import type { BoxScore, Snapshot, SyncStatus, WeekRankings } from './types';
 
 export async function getCreds(): Promise<EspnCreds & { source: 'env' | 'admin'; updatedAt: string | null }> {
-  const override = await db.get<{ s2: string; updatedAt: string }>(KEYS.cookie);
+  const override = await db.get<{ s2: string; updatedAt: string }>(KEYS.cookie, { strong: true });
   const leagueId = env('ESPN_LEAGUE_ID') ?? '';
   const swid = env('ESPN_SWID') ?? '';
   if (override?.s2) return { leagueId, swid, s2: override.s2, source: 'admin', updatedAt: override.updatedAt };
@@ -32,7 +32,7 @@ export interface SyncResult {
 }
 
 export async function runSync(opts: { force?: boolean } = {}): Promise<SyncResult> {
-  const status = await getStatus();
+  const status = await getStatus(true);
   status.lastAttempt = new Date().toISOString();
   const creds = await getCreds();
   status.cookieSource = creds.source;
@@ -48,7 +48,7 @@ export async function runSync(opts: { force?: boolean } = {}): Promise<SyncResul
   }
 
   // Player-name cache so transactions can name players who are no longer on any roster
-  const names: NameMap = (await db.get<NameMap>(KEYS.players)) ?? {};
+  const names: NameMap = (await db.get<NameMap>(KEYS.players, { strong: true })) ?? {};
   let pool: Awaited<ReturnType<typeof fetchPlayerPool>> | null = null;
 
   let snap: Snapshot;
@@ -82,7 +82,7 @@ export async function runSync(opts: { force?: boolean } = {}): Promise<SyncResul
   status.lastSuccess = new Date().toISOString();
   await db.set(KEYS.league, snap);
 
-  const rankings = await getRankings();
+  const rankings = await getRankings(true);
   let changed = false;
 
   // Week 0 — draft grades (once)

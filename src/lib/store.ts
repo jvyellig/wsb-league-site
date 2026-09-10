@@ -19,7 +19,7 @@ export const KEYS = {
 };
 
 interface KV {
-  get(key: string): Promise<any | null>;
+  get(key: string, strong?: boolean): Promise<any | null>;
   set(key: string, value: any): Promise<void>;
   del(key: string): Promise<void>;
 }
@@ -61,13 +61,16 @@ async function fileKV(dir: string): Promise<KV> {
 
 async function blobKV(): Promise<KV> {
   const { getStore } = await import('@netlify/blobs');
-  const store = getStore({ name: 'league', consistency: 'strong' });
+  // Pages read with eventual consistency (fast, edge-cached); the sync/admin paths read strongly
+  // so read-modify-write on status/rankings never works from a stale copy.
+  const eventual = getStore({ name: 'league' });
+  const strong = getStore({ name: 'league', consistency: 'strong' });
   return {
-    get: (key) => store.get(key, { type: 'json' }),
+    get: (key, useStrong = false) => (useStrong ? strong : eventual).get(key, { type: 'json' }),
     set: async (key, value) => {
-      await store.setJSON(key, value);
+      await strong.setJSON(key, value);
     },
-    del: (key) => store.delete(key),
+    del: (key) => strong.delete(key),
   };
 }
 
@@ -78,9 +81,25 @@ async function getKV(): Promise<KV> {
   return kv;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export const db = {
-  async get<T = any>(key: string): Promise<T | null> {
-    return (await getKV()).get(key);
+  /** Read a JSON blob. Retries once on a transient failure; `strong` forces a read-after-write-consistent read. */
+  async get<T = any>(key: string, opts: { strong?: boolean; throwOnError?: boolean } = {}): Promise<T | null> {
+    const store = await getKV();
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await store.get(key, opts.strong);
+      } catch (e) {
+        if (attempt < 2) {
+          await sleep(150 * (attempt + 1));
+          continue;
+        }
+        console.error(`blob read failed for ${key}:`, e);
+        if (opts.throwOnError) throw e;
+        return null;
+      }
+    }
   },
   async set(key: string, value: any) {
     return (await getKV()).set(key, value);
@@ -91,8 +110,8 @@ export const db = {
 };
 
 export const getSnapshot = () => db.get<Snapshot>(KEYS.league);
-export const getStatus = async (): Promise<SyncStatus> =>
-  (await db.get<SyncStatus>(KEYS.status)) ?? {
+export const getStatus = async (strong = false): Promise<SyncStatus> =>
+  (await db.get<SyncStatus>(KEYS.status, { strong })) ?? {
     lastAttempt: null,
     lastSuccess: null,
     lastError: null,
@@ -102,21 +121,21 @@ export const getStatus = async (): Promise<SyncStatus> =>
     cookieUpdatedAt: null,
     log: [],
   };
-export const getRankings = async (): Promise<Rankings> => (await db.get<Rankings>(KEYS.rankings)) ?? { weeks: {}, awards: {} };
+export const getRankings = async (strong = false): Promise<Rankings> => (await db.get<Rankings>(KEYS.rankings, { strong })) ?? { weeks: {}, awards: {} };
 export const getDraftRecap = () => db.get<DraftRecap>(KEYS.draft);
 export const getDerived = () => db.get<Derived>(KEYS.derived);
-export const getNotes = async (): Promise<Record<string, string>> => (await db.get(KEYS.notes)) ?? {};
+export const getNotes = async (strong = false): Promise<Record<string, string>> => (await db.get(KEYS.notes, { strong })) ?? {};
 export const getBox = (w: number) => db.get<BoxScore>(KEYS.box(w));
 
-/** Everything a page typically needs, in one round of parallel reads. */
+/** Everything a page typically needs, in one round of parallel reads. Never throws — a failed read comes back null/empty. */
 export async function loadAll() {
   const [snapshot, status, rankings, derived, notes, draft] = await Promise.all([
-    getSnapshot(),
-    getStatus(),
-    getRankings(),
-    getDerived(),
-    getNotes(),
-    getDraftRecap(),
+    getSnapshot().catch(() => null),
+    getStatus().catch(() => getStatus()),
+    getRankings().catch(() => ({ weeks: {}, awards: {} }) as Rankings),
+    getDerived().catch(() => null),
+    getNotes().catch(() => ({}) as Record<string, string>),
+    getDraftRecap().catch(() => null),
   ]);
   return { snapshot, status, rankings, derived, notes, draft };
 }

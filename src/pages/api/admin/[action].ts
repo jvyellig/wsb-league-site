@@ -25,7 +25,7 @@ export const POST: APIRoute = async ({ params, request }) => {
 
   switch (action) {
     case 'state': {
-      const [status, notes, snap] = await Promise.all([getStatus(), getNotes(), getSnapshot()]);
+      const [status, notes, snap] = await Promise.all([getStatus(true), getNotes(true), getSnapshot()]);
       return json({ status, notes, teams: snap?.teams.map((t) => ({ id: t.id, name: t.name })) ?? [], hasEnvCookie: Boolean(env('ESPN_S2')) });
     }
     case 'sync': {
@@ -53,7 +53,7 @@ export const POST: APIRoute = async ({ params, request }) => {
     case 'notes': {
       const teamId = String(body.teamId ?? '');
       if (!teamId) return json({ error: 'teamId required' }, 400);
-      const notes = await getNotes();
+      const notes = await getNotes(true);
       const text = String(body.markdown ?? '').slice(0, 20000);
       if (text.trim()) notes[teamId] = text;
       else delete notes[teamId];

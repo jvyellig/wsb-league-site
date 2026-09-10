@@ -11,7 +11,8 @@ interface Props {
 }
 const { title, description = 'WSB Generations League — standings, power rankings, trade block and more.', noCache = false } = Astro.props;
 
-const [snapshot, status] = await Promise.all([getSnapshot(), getStatus()]);
+const [snapshot, status] = await Promise.all([getSnapshot().catch(() => null), getStatus().catch(() => getStatus())]);
+const readHiccup = !snapshot && !!status.lastSuccess;
 const leagueName = snapshot?.leagueName ?? 'WSB Generations League';
 const path = Astro.url.pathname;
 const nav = [
@@ -79,9 +80,14 @@ if (!noCache) {
         </div>
       </div>
     )}
-    {!snapshot && (
+    {!snapshot && !readHiccup && (
       <div class="banner warn">
         <div class="wrap"><strong>No league data yet.</strong><span>The first ESPN sync hasn't run. Trigger one from <a href="/admin">/admin</a>.</span></div>
+      </div>
+    )}
+    {readHiccup && (
+      <div class="banner warn">
+        <div class="wrap"><strong>Temporary hiccup loading league data.</strong><span>The data store didn't answer in time — refresh in a few seconds.</span></div>
       </div>
     )}
 

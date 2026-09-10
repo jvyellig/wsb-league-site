@@ -11,7 +11,7 @@ export default async (req: Request) => {
     console.log('sync-live: no game in progress, skipping');
     return;
   }
-  const status = await getStatus();
+  const status = await getStatus(true);
   const sinceLast = status.lastAttempt ? Date.now() - new Date(status.lastAttempt).getTime() : Infinity;
   if (sinceLast < 90_000) {
     console.log('sync-live: synced ' + Math.round(sinceLast / 1000) + 's ago, skipping');
