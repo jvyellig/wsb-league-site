@@ -32,7 +32,7 @@ const stale = staleMs > 3 * 60 * 60 * 1000; // > 3 hours without a successful sy
 
 if (!noCache) {
   Astro.response.headers.set('Cache-Control', 'public, max-age=0, must-revalidate');
-  Astro.response.headers.set('Netlify-CDN-Cache-Control', 'public, s-maxage=120, stale-while-revalidate=600');
+  Astro.response.headers.set('Netlify-CDN-Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120');
 } else {
   Astro.response.headers.set('Cache-Control', 'private, no-store');
 }
@@ -95,7 +95,7 @@ if (!noCache) {
       <div class="wrap">
         <span>{leagueName} · {snapshot?.season ?? new Date().getFullYear()} season</span>
         <span>
-          ESPN data updated {timeAgo(status.lastSuccess)} · refreshes every 15 min · <a href="/methodology">how rankings work</a> · <a href="/admin">admin</a>
+          ESPN data updated {timeAgo(status.lastSuccess)} · refreshes every 2 min during games, every 15 min otherwise · <a href="/methodology">how rankings work</a> · <a href="/admin">admin</a>
         </span>
       </div>
     </footer>

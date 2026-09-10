@@ -40,7 +40,7 @@ const txVerb: Record<string, string> = { WAIVER: 'claimed', FREEAGENT: 'added', 
       <section class="section" style="margin-top:0">
         <div class="card-head">
           <h2>Week {week} scoreboard</h2>
-          <span class="sub">Live scores update every 15 minutes · <a href="/matchups">previews & history</a></span>
+          <span class="sub">Live scores update every 2 minutes during games · <a href="/matchups">previews & history</a></span>
         </div>
         <div class="grid grid-3">
           {thisWeek.map((m) => <MatchupCard m={m} snap={snap} live gotw={m.id === gotwId} />)}
