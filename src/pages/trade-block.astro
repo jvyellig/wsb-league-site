@@ -89,7 +89,7 @@ const configured = Boolean(supabaseUrl && supabaseKey);
       });
 
       function logoHtml(t) {
-        const ok = t && /^https?:\/\//.test(t.logo || '');
+        const ok = t && /^(https?:\/\/|\/logos\/)/.test(t.logo || '');
         const ini = (t?.name || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
         return ok ? `<img class="logo sm" src="${esc(t.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'logo sm logo-fallback',textContent:'${esc(ini)}'}))">` : `<span class="logo sm logo-fallback">${esc(ini)}</span>`;
       }

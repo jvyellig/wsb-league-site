@@ -10,6 +10,7 @@ import { db, env, getRankings, getStatus, KEYS } from './store';
 import { completedWeeks, computeDraftRecap, computeWeekRankings, week0Rankings } from './rankings';
 import { computeAwards, computeDerived, type HistoryGame } from './analytics';
 import { postDiscord } from './discord';
+import { cacheLogos } from './logos';
 import type { BoxScore, Snapshot, SyncStatus, WeekRankings } from './types';
 
 export async function getCreds(): Promise<EspnCreds & { source: 'env' | 'admin'; updatedAt: string | null }> {
@@ -80,6 +81,11 @@ export async function runSync(opts: { force?: boolean } = {}): Promise<SyncResul
   status.authExpiredSince = null;
   status.lastError = null;
   status.lastSuccess = new Date().toISOString();
+  try {
+    await cacheLogos(snap, creds); // rewrites team.logo to /logos/<id> for cached images
+  } catch (e: any) {
+    log(status, `Logo cache failed: ${e?.message}`, false);
+  }
   await db.set(KEYS.league, snap);
 
   const rankings = await getRankings(true);

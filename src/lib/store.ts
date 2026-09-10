@@ -13,6 +13,8 @@ export const KEYS = {
   derived: 'derived.json',
   notes: 'notes.json',
   players: 'players.json',
+  logos: 'logos.json',
+  logo: (teamId: number) => `logos/${teamId}`,
   cookie: 'config/espn_s2.json',
   box: (w: number) => `box/${w}.json`,
   history: (season: number) => `history/${season}.json`,
@@ -22,6 +24,8 @@ interface KV {
   get(key: string, strong?: boolean): Promise<any | null>;
   set(key: string, value: any): Promise<void>;
   del(key: string): Promise<void>;
+  getBytes(key: string): Promise<ArrayBuffer | null>;
+  setBytes(key: string, value: ArrayBuffer): Promise<void>;
 }
 
 let kv: KV | null = null;
@@ -56,6 +60,18 @@ async function fileKV(dir: string): Promise<KV> {
         await fs.unlink(p(key));
       } catch {}
     },
+    async getBytes(key) {
+      try {
+        const buf = await fs.readFile(p(key));
+        return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+      } catch {
+        return null;
+      }
+    },
+    async setBytes(key, value) {
+      await fs.mkdir(path.dirname(p(key)), { recursive: true });
+      await fs.writeFile(p(key), Buffer.from(value));
+    },
   };
 }
 
@@ -71,6 +87,10 @@ async function blobKV(): Promise<KV> {
       await strong.setJSON(key, value);
     },
     del: (key) => strong.delete(key),
+    getBytes: (key) => eventual.get(key, { type: 'arrayBuffer' }),
+    setBytes: async (key, value) => {
+      await strong.set(key, value);
+    },
   };
 }
 
@@ -106,6 +126,16 @@ export const db = {
   },
   async del(key: string) {
     return (await getKV()).del(key);
+  },
+  async getBytes(key: string): Promise<ArrayBuffer | null> {
+    try {
+      return await (await getKV()).getBytes(key);
+    } catch {
+      return null;
+    }
+  },
+  async setBytes(key: string, value: ArrayBuffer) {
+    return (await getKV()).setBytes(key, value);
   },
 };
 

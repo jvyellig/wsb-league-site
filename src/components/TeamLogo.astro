@@ -7,7 +7,7 @@ interface Props {
 }
 const { team, size = 'md' } = Astro.props;
 const cls = `logo ${size === 'md' ? '' : size}`.trim();
-const ok = team.logo && /^https?:\/\//.test(team.logo);
+const ok = team.logo && /^(https?:\/\/|\/logos\/)/.test(team.logo);
 ---
 
 {ok ? (
