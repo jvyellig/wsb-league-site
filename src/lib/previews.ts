@@ -54,7 +54,7 @@ export function previewsConfigured(): boolean {
 }
 
 const MODEL = () => env('ANTHROPIC_MODEL') || 'claude-sonnet-5';
-const SEARCHES_PER_MATCHUP = 6;
+const SEARCHES_PER_MATCHUP = 5;
 // Sequential on purpose: a fresh API key has tight per-minute token limits, and web search results
 // make each call input-heavy. Six matchups still finish well inside the 15-minute background limit.
 const CONCURRENCY = 1;
@@ -270,7 +270,7 @@ async function generateOne(client: Anthropic, ctx: Ctx, m: Matchup): Promise<AiP
   const cited = new Map<string, string>();
 
   for (let turn = 0; turn < 3; turn++) {
-    const res = await client.messages.create({ model: MODEL(), max_tokens: 4000, system: SYSTEM, tools, messages }, { timeout: 240_000 });
+    const res = await client.messages.create({ model: MODEL(), max_tokens: 6000, system: SYSTEM, tools, messages }, { timeout: 240_000 });
     // Collect web citations from any text blocks so sources are complete
     for (const block of res.content as any[]) {
       if (block.type === 'text') for (const c of block.citations ?? []) if (c.type === 'web_search_result_location' && c.url) cited.set(c.url, c.title ?? c.url);
@@ -287,6 +287,7 @@ async function generateOne(client: Anthropic, ctx: Ctx, m: Matchup): Promise<AiP
       const sources = new Map<string, string>();
       for (const s of input.sources ?? []) if (s?.url) sources.set(String(s.url), String(s.title || s.url));
       for (const [url, title] of cited) if (!sources.has(url)) sources.set(url, title);
+      if (!cleanText(input.body) || !cleanText(input.headline)) throw new Error('Model submitted an empty preview.');
       const clean = (list: any[]) => (Array.isArray(list) ? list : []).slice(0, 3).map((p) => ({ name: cleanText(p?.name), pos: cleanText(p?.pos), why: cleanText(p?.why) })).filter((p) => p.name);
       return {
         ...base,
@@ -379,6 +380,19 @@ export async function generatePreviews(opts: { week?: number } = {}): Promise<Ge
       return old ? { ...old, error: msg } : { matchupId: m.id, week, homeId: m.home.teamId, awayId: m.away!.teamId, headline: '', body: '', keyPlayers: { home: [], away: [] }, prediction: { winnerId: m.home.teamId, winProb: 50, reasoning: '' }, bold: '', sources: [], generatedAt: new Date().toISOString(), error: msg };
     }
   });
+
+  // One more pass for anything that failed, after letting per-minute limits reset.
+  const retryIdx = previews.map((p, i) => (p.error ? i : -1)).filter((i) => i >= 0);
+  if (retryIdx.length) {
+    await new Promise((r) => setTimeout(r, 60_000));
+    for (const i of retryIdx) {
+      try {
+        previews[i] = await generateOne(client, ctx, matchups[i]);
+      } catch (e: any) {
+        console.error(`final retry failed for matchup ${matchups[i].id}:`, e?.message ?? e);
+      }
+    }
+  }
 
   const failed = previews.filter((p) => p.error && !p.body).length;
   const generated = previews.filter((p) => !p.error).length;
