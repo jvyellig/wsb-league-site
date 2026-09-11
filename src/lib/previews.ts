@@ -360,7 +360,10 @@ export async function generatePreviews(opts: { week?: number } = {}): Promise<Ge
   const ctx: Ctx = { snap, derived, rankings, draft, week, history };
   const client = new Anthropic({ apiKey: env('ANTHROPIC_API_KEY'), maxRetries: 4 });
 
+  let started = 0;
   const previews = await mapLimit(matchups, CONCURRENCY, async (m) => {
+    // Space the calls out so a new account's per-minute token limit has room to reset between matchups.
+    if (started++ > 0) await new Promise((r) => setTimeout(r, 25_000));
     let lastErr: any = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
