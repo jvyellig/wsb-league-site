@@ -47,10 +47,32 @@ function statAvg(stats: any[] | undefined, id: string): number | undefined {
   return s ? num(s.appliedAverage) : undefined;
 }
 
+/** ESPN stat ids worth keeping for a readable stat line. */
+const KEEP_STATS = new Set([0, 1, 3, 4, 20, 23, 24, 25, 42, 43, 53, 58, 72, 83, 84, 86, 87, 95, 96, 97, 98, 99, 101, 102, 103, 104, 105, 120, 127]);
+
+/** Keep just the interesting raw stats from an ESPN stat entry, or undefined if nothing was recorded. */
+function pickStats(entry: any): Record<string, number> | undefined {
+  const raw = entry?.stats;
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: Record<string, number> = {};
+  let any = false;
+  for (const [k, v] of Object.entries(raw)) {
+    if (KEEP_STATS.has(Number(k)) && typeof v === 'number') {
+      out[k] = v;
+      any = true;
+    }
+  }
+  return any ? out : undefined;
+}
+
+/** In-week entries: actual (source 0) and projected (source 1) for one scoring period. ESPN keys actuals by game id, so match on source/period rather than id. */
+const weekEntry = (stats: any[], source: number, week: number) => stats.find((s) => s.statSourceId === source && s.statSplitTypeId === 1 && s.scoringPeriodId === week);
+
 function normalizePlayer(entry: any, season: number, week: number): RosterPlayer {
   const p = entry.playerPoolEntry?.player ?? {};
   const stats: any[] = p.stats ?? [];
   const slotId = num(entry.lineupSlotId, 20);
+  const actual = weekEntry(stats, 0, week);
   return {
     id: num(entry.playerId),
     name: p.fullName ?? 'Unknown',
@@ -62,13 +84,14 @@ function normalizePlayer(entry: any, season: number, week: number): RosterPlayer
     injuryStatus: p.injuryStatus ?? 'ACTIVE',
     acquisitionType: entry.acquisitionType ?? 'DRAFT',
     acquisitionDate: entry.acquisitionDate ?? null,
-    projWeek: statTotal(stats.filter((s) => s.statSourceId === 1 && s.statSplitTypeId === 1 && s.scoringPeriodId === week), `11${season}${week}`) ?? 0,
-    actualWeek: statTotal(stats.filter((s) => s.statSourceId === 0 && s.statSplitTypeId === 1 && s.scoringPeriodId === week), `01${season}${week}`) ?? 0,
+    projWeek: num(weekEntry(stats, 1, week)?.appliedTotal),
+    actualWeek: num(actual?.appliedTotal),
     seasonProj: statTotal(stats, `10${season}`) ?? 0,
     seasonProjAvg: statAvg(stats, `10${season}`) ?? 0,
     seasonPts: statTotal(stats, `00${season}`) ?? 0,
     percentOwned: num(p.ownership?.percentOwned),
     adp: p.ownership?.averageDraftPosition ?? null,
+    stats: pickStats(actual),
   };
 }
 
@@ -242,6 +265,8 @@ export async function fetchBoxScore(creds: EspnCreds, season: number, week: numb
       const players = entries.map((e: any) => {
         const p = e.playerPoolEntry?.player ?? {};
         const slotId = num(e.lineupSlotId, 20);
+        const stats: any[] = p.stats ?? [];
+        const actual = weekEntry(stats, 0, week);
         return {
           id: num(e.playerId),
           name: p.fullName ?? 'Unknown',
@@ -250,7 +275,10 @@ export async function fetchBoxScore(creds: EspnCreds, season: number, week: numb
           slotId,
           slot: SLOTS[slotId] ?? '?',
           starter: !BENCH_SLOTS.has(slotId),
-          points: num(e.playerPoolEntry?.appliedStatTotal),
+          points: num(e.playerPoolEntry?.appliedStatTotal, num(actual?.appliedTotal)),
+          proj: num(weekEntry(stats, 1, week)?.appliedTotal),
+          injuryStatus: p.injuryStatus ?? 'ACTIVE',
+          stats: pickStats(actual),
         };
       });
       box.teams[String(s.teamId)] = {

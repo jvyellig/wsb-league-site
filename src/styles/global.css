@@ -244,3 +244,32 @@ label { display: block; font-size: 0.82rem; color: var(--muted); margin-bottom: 
 details summary { cursor: pointer; color: var(--accent-2); font-weight: 600; }
 .toc { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
 .toc a { font-size: 0.85rem; padding: 4px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--border); }
+
+/* Matchup player breakdown (collapsed by default) */
+.drill { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
+.drill > summary { display: flex; align-items: center; gap: 10px; list-style: none; font-size: 0.85rem; user-select: none; }
+.drill > summary::-webkit-details-marker { display: none; }
+.drill > summary .drill-label::before { content: '▸'; display: inline-block; margin-right: 6px; transition: transform 0.15s; }
+.drill[open] > summary .drill-label::before { transform: rotate(90deg); }
+.drill-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 10px; }
+@media (max-width: 720px) { .drill-cols { grid-template-columns: 1fr; } .drill > summary .tiny { display: none; } }
+.drill-side { min-width: 0; border-radius: 8px; padding: 4px 6px; }
+.drill-side.me { background: rgba(245, 196, 81, 0.05); }
+.drill-head, .drill-row, .drill-total { display: grid; grid-template-columns: 34px 28px minmax(0, 1fr) 40px 46px; align-items: center; gap: 6px; }
+.drill-head { padding: 4px 0 8px; border-bottom: 1px solid var(--border); }
+.drill-head .drill-team { grid-column: 1 / 4; font-weight: 700; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
+.drill-row { padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 0.85rem; }
+.drill-row.idle { opacity: 0.55; }
+.drill-slot { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; }
+.drill-who { min-width: 0; }
+.drill-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drill-who .tiny { line-height: 1.35; }
+.drill-who .pos { font-size: 0.65rem; padding: 0 5px; }
+.headshot.xs { width: 28px; height: 28px; }
+.drill-proj, .drill-pts { text-align: right; font-variant-numeric: tabular-nums; }
+.drill-pts { font-weight: 700; }
+.drill-total { padding: 6px 0; font-size: 0.8rem; font-weight: 600; color: var(--muted); grid-template-columns: minmax(0, 1fr) 40px 46px; }
+.drill-total.bench { color: var(--dim); font-weight: 500; }
+.drill-bench-label { margin-top: 8px; padding: 4px 0; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; border-bottom: 1px solid var(--border); }
+/* An expanded breakdown takes the full row so both lineups fit side by side. */
+.grid > .card:has(.drill[open]) { grid-column: 1 / -1; }

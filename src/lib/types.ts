@@ -16,6 +16,7 @@ export interface RosterPlayer {
   seasonPts: number;
   percentOwned: number;
   adp: number | null;
+  stats?: Record<string, number>; // this week's raw stat line (ESPN stat ids), when the player has played
 }
 
 export interface Team {
@@ -116,6 +117,9 @@ export interface BoxPlayer {
   starter: boolean;
   points: number;
   proTeam: string;
+  proj?: number; // pre-game projection for the week
+  injuryStatus?: string;
+  stats?: Record<string, number>; // raw stat line (ESPN stat ids)
 }
 
 export interface BoxScore {

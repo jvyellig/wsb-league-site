@@ -1,0 +1,93 @@
+---
+/**
+ * Collapsed-by-default player breakdown for one matchup: every starter and bench player
+ * for both teams with projection, points and a short stat line.
+ */
+import type { Team } from '../lib/types';
+import TeamLogo from './TeamLogo.astro';
+import { fmt1, headshot, injuryTag, posClass, slotRank, statLine } from '../lib/format';
+
+export interface DetailPlayer {
+  id: number;
+  name: string;
+  pos: string;
+  proTeam: string;
+  slot: string;
+  slotId: number;
+  starter: boolean;
+  points: number;
+  proj?: number;
+  injuryStatus?: string;
+  stats?: Record<string, number>;
+}
+export interface DetailSide {
+  team: Team;
+  players: DetailPlayer[];
+}
+interface Props {
+  home: DetailSide;
+  away: DetailSide | null;
+  live?: boolean; // current week: points may still be moving
+  me?: number | null;
+}
+const { home, away, live = false, me = null } = Astro.props;
+const sides = [home, away].filter(Boolean) as DetailSide[];
+const played = (p: DetailPlayer) => !!p.stats || p.points !== 0;
+const sortPlayers = (list: DetailPlayer[]) => [...list].sort((a, b) => slotRank(a.slotId) - slotRank(b.slotId) || b.points - a.points);
+const sum = (list: DetailPlayer[], k: 'points' | 'proj') => list.reduce((s, p) => s + (p[k] ?? 0), 0);
+---
+
+<details class="drill">
+  <summary><span class="drill-label">Player breakdown</span><span class="tiny dim">starters, bench, stat lines</span></summary>
+  <div class="drill-cols">
+    {sides.map((s) => {
+      const starters = sortPlayers(s.players.filter((p) => p.starter));
+      const bench = sortPlayers(s.players.filter((p) => !p.starter));
+      const mine = me !== null && me === s.team.id;
+      const row = (p: DetailPlayer) => {
+        const inj = injuryTag(p.injuryStatus ?? 'ACTIVE');
+        const line = statLine(p.pos, p.stats);
+        return (
+          <div class:list={['drill-row', { idle: live && !played(p) }]}>
+            <div class="drill-slot dim">{p.slot}</div>
+            <img class="headshot xs" src={headshot(p.id, p.pos, p.proTeam)} alt="" loading="lazy" />
+            <div class="drill-who">
+              <div class="drill-name">{p.name}{inj && <span class={inj.cls}>{inj.text}</span>}</div>
+              <div class="tiny dim">
+                <span class={posClass(p.pos)}>{p.pos}</span> {p.proTeam}{line ? ` · ${line}` : ''}
+              </div>
+            </div>
+            <div class="drill-proj tiny dim">{p.proj !== undefined ? fmt1(p.proj) : ''}</div>
+            <div class="drill-pts">{live && !played(p) ? '—' : fmt1(p.points)}</div>
+          </div>
+        );
+      };
+      return (
+        <div class:list={['drill-side', { me: mine }]}>
+          <div class="drill-head">
+            <div class="drill-team"><TeamLogo team={s.team} size="sm" /><span>{s.team.name}</span></div>
+            <div class="drill-proj tiny dim">proj</div>
+            <div class="drill-pts tiny dim">pts</div>
+          </div>
+          {starters.map(row)}
+          <div class="drill-total">
+            <span>Starters</span>
+            <span class="drill-proj tiny dim">{fmt1(sum(starters, 'proj'))}</span>
+            <span class="drill-pts">{fmt1(sum(starters, 'points'))}</span>
+          </div>
+          {bench.length > 0 && (
+            <>
+              <div class="drill-bench-label tiny dim">Bench</div>
+              {bench.map(row)}
+              <div class="drill-total bench">
+                <span>Bench</span>
+                <span class="drill-proj tiny dim">{fmt1(sum(bench, 'proj'))}</span>
+                <span class="drill-pts">{fmt1(sum(bench, 'points'))}</span>
+              </div>
+            </>
+          )}
+        </div>
+      );
+    })}
+  </div>
+</details>

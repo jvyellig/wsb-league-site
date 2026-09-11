@@ -3,6 +3,7 @@ import netlify from '@astrojs/netlify';
 
 export default defineConfig({
   output: 'server',
-  adapter: netlify(),
-  site: 'https://wsbgenerations.netlify.app',
+  // Local dev only: skip the Edge Functions emulator (needs Deno). Production is unaffected.
+  adapter: netlify({ devFeatures: { edgeFunctions: false } }),
+  site: 'https://wsbgenerations.com',
 });

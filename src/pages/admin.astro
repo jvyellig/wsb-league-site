@@ -29,6 +29,7 @@ import Base from '../layouts/Base.astro';
           <div class="flex"><button class="btn" id="cookie-btn">Test & save</button><button class="btn sm secondary" id="cookie-reset" title="Go back to the ESPN_S2 environment variable">Use env var instead</button><span class="tiny" id="cookie-msg"></span></div>
         </div>
         <details class="section"><summary>Sync log</summary><ul id="log" class="tiny" style="padding-left:18px;margin:8px 0 0;color:var(--muted)"></ul></details>
+        <details class="section"><summary>Storage check</summary><p class="tiny muted" style="margin:8px 0">Tests whether this deploy can read and write the site's data store (Netlify Blobs).</p><button class="btn sm secondary" id="diag-btn">Run check</button><pre id="diag-out" class="tiny" style="white-space:pre-wrap;margin:8px 0 0;color:var(--muted)"></pre></details>
       </div>
 
       <div class="card">
@@ -97,7 +98,8 @@ import Base from '../layouts/Base.astro';
       $('pass').addEventListener('keydown', (e) => e.key === 'Enter' && unlock());
       if (key) unlock();
 
-      $('sync-btn').addEventListener('click', async () => { $('sync-btn').disabled = true; $('sync-btn').textContent = 'Syncing…'; try { await call('sync'); } catch (e) {} await refresh(); $('sync-btn').disabled = false; $('sync-btn').textContent = 'Sync now'; });
+      $('sync-btn').addEventListener('click', async () => { $('sync-btn').disabled = true; $('sync-btn').textContent = 'Syncing…'; try { await call('sync'); } catch (e) { alert('Sync failed: ' + e.message); } await refresh(); $('sync-btn').disabled = false; $('sync-btn').textContent = 'Sync now'; });
+      $('diag-btn').addEventListener('click', async () => { $('diag-out').textContent = 'Running…'; try { const d = await call('diag'); $('diag-out').textContent = JSON.stringify(d, null, 2); } catch (e) { $('diag-out').textContent = 'Failed: ' + e.message; } });
       $('cookie-btn').addEventListener('click', async () => {
         $('cookie-btn').disabled = true; flash('cookie-msg', 'Testing against ESPN…', true);
         try { await call('cookie', { s2: $('s2').value }); flash('cookie-msg', 'Saved — ESPN accepted the cookie and a sync ran.', true); $('s2').value = ''; await refresh(); }

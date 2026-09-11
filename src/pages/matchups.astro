@@ -2,8 +2,10 @@
 import Base from '../layouts/Base.astro';
 import MatchupCard from '../components/MatchupCard.astro';
 import TeamLogo from '../components/TeamLogo.astro';
-import { loadAll } from '../lib/store';
+import MatchupDetail, { type DetailSide } from '../components/MatchupDetail.astro';
+import { getBox, loadAll } from '../lib/store';
 import { fmt1, teamById } from '../lib/format';
+import type { Matchup } from '../lib/types';
 
 const { snapshot: snap, derived } = await loadAll();
 const current = snap?.currentMatchupPeriod ?? 1;
@@ -15,6 +17,22 @@ const isMine = (m: { home: { teamId: number }; away: { teamId: number } | null }
 const matchups = snap ? [...snap.schedule.filter((m) => m.week === week)].sort((a, b) => Number(isMine(b)) - Number(isMine(a))) : [];
 const previews = week === current ? [...(derived?.previews ?? [])].sort((a, b) => Number(isMine(matchups.find((m) => m.id === b.matchupId)!)) - Number(isMine(matchups.find((m) => m.id === a.matchupId)!))) : [];
 const isFuture = week > current;
+
+// Player-level detail: live rosters for the current week, the frozen box score for completed weeks.
+const box = snap && week < current ? await getBox(week) : null;
+function side(teamId: number | undefined): DetailSide | null {
+  if (!snap || teamId === undefined) return null;
+  const team = teamById(snap, teamId);
+  if (!team) return null;
+  if (week === current) return { team, players: team.roster.map((p) => ({ ...p, points: p.actualWeek, proj: p.projWeek })) };
+  const b = box?.teams[String(teamId)];
+  return b ? { team, players: b.players } : null;
+}
+function detail(m: Matchup) {
+  const home = side(m.home.teamId);
+  if (!home || !m.away) return null;
+  return { home, away: side(m.away.teamId) };
+}
 ---
 
 <Base title="Matchups">
@@ -43,6 +61,10 @@ const isFuture = week > current;
           <div class:list={['card', { gotw: p.gameOfWeek, me: isMine(m) }]} style={p.gameOfWeek ? 'border-color:rgba(245,196,81,.5)' : ''}>
             {p.gameOfWeek && <div class="tiny gold" style="font-weight:700;letter-spacing:.1em;margin-bottom:8px">★ GAME OF THE WEEK</div>}
             <MatchupCard m={m} snap={snap} live me={me} />
+            {(() => {
+              const d = detail(m);
+              return d ? <MatchupDetail home={d.home} away={d.away} live me={me} /> : null;
+            })()}
             {away && (
               <>
                 <div class="grid grid-2" style="margin-top:14px;gap:12px">
@@ -70,8 +92,18 @@ const isFuture = week > current;
       })}
     </div>
   ) : (
-    <div class="grid grid-3">
-      {matchups.map((m) => <MatchupCard m={m} snap={snap} live={week === current} me={me} />)}
+    <div class:list={['grid', isFuture ? 'grid-3' : 'grid-2']}>
+      {matchups.map((m) => {
+        const d = detail(m);
+        return d ? (
+          <div class:list={['card', { me: isMine(m) }]}>
+            <MatchupCard m={m} snap={snap} live={week === current} me={me} />
+            <MatchupDetail home={d.home} away={d.away} live={week === current} me={me} />
+          </div>
+        ) : (
+          <MatchupCard m={m} snap={snap} live={week === current} me={me} />
+        );
+      })}
       {isFuture && matchups.length === 0 && <div class="empty">Schedule not published yet.</div>}
     </div>
   )}

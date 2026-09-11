@@ -31,8 +31,12 @@ export const POST: APIRoute = async ({ params, request }) => {
       return json({ status, notes, teams: snap?.teams.map((t) => ({ id: t.id, name: t.name, logo: t.logo, logoOk: !!logos[t.id]?.ok, override: !!logos[t.id]?.override })) ?? [], hasEnvCookie: Boolean(env('ESPN_S2')) });
     }
     case 'sync': {
-      const result = await runSync({ force: Boolean(body.force) });
-      return json(result, result.ok ? 200 : 502);
+      try {
+        const result = await runSync({ force: Boolean(body.force) });
+        return json(result, result.ok ? 200 : 502);
+      } catch (e: any) {
+        return json({ error: `Sync crashed: ${e?.message ?? e}` }, 500);
+      }
     }
     case 'cookie': {
       const s2 = String(body.s2 ?? '').trim();
@@ -89,6 +93,23 @@ export const POST: APIRoute = async ({ params, request }) => {
       await db.del(KEYS.logo(teamId));
       await runSync(); // re-fetches from ESPN
       return json({ ok: true });
+    }
+    case 'diag': {
+      // Blob storage self-test: surfaces the real error when reads/writes fail
+      const out: Record<string, unknown> = { deploy: env('DEPLOY_ID'), context: env('CONTEXT'), site: env('SITE_ID'), url: env('URL') };
+      try {
+        const { getStore } = await import('@netlify/blobs');
+        const store = getStore({ name: 'league', consistency: 'strong' });
+        out.read = (await store.get('status.json', { type: 'json' })) ? 'ok' : 'null';
+        await store.setJSON('diag.json', { at: new Date().toISOString() });
+        out.write = 'ok';
+        const { blobs } = await store.list({ prefix: 'l' });
+        out.list = blobs.map((b) => b.key);
+      } catch (e: any) {
+        out.error = e?.message ?? String(e);
+        out.stack = String(e?.stack ?? '').split('\n').slice(0, 4);
+      }
+      return json(out);
     }
     default:
       return json({ error: 'Unknown action' }, 404);

@@ -79,8 +79,14 @@ async function blobKV(): Promise<KV> {
   const { getStore } = await import('@netlify/blobs');
   // Pages read with eventual consistency (fast, edge-cached); the sync/admin paths read strongly
   // so read-modify-write on status/rankings never works from a stale copy.
-  const eventual = getStore({ name: 'league' });
-  const strong = getStore({ name: 'league', consistency: 'strong' });
+  // Normally Netlify injects the Blobs credentials into the function runtime. As a safety net (some
+  // deploy paths have shown up without them), NETLIFY_BLOBS_TOKEN (a Netlify personal access token)
+  // + SITE_ID lets the client authenticate explicitly.
+  const token = env('NETLIFY_BLOBS_TOKEN');
+  const siteID = env('SITE_ID');
+  const explicit = token && siteID ? { siteID, token } : {};
+  const eventual = getStore({ name: 'league', ...explicit });
+  const strong = getStore({ name: 'league', consistency: 'strong', ...explicit });
   return {
     get: (key, useStrong = false) => (useStrong ? strong : eventual).get(key, { type: 'json' }),
     set: async (key, value) => {
