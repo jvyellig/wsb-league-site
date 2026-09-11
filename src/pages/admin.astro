@@ -109,6 +109,7 @@ import Base from '../layouts/Base.astro';
         else if (s.status === 'ready') html += `<span class="green">ready</span> · ${s.count} of ${s.total} previews · finished ${when(s.finishedAt)} · ${s.model}`;
         else html += `<span class="red">failed</span> · ${when(s.finishedAt)}`;
         if (s.error) html += `<div class="tiny red" style="margin-top:4px">${s.error}</div>`;
+        if (s.failures && s.failures.length) html += `<ul class="tiny dim" style="margin:4px 0 0;padding-left:18px">${s.failures.map((f) => `<li>Matchup ${f.matchupId}: ${f.error}</li>`).join('')}</ul>`;
         box.innerHTML = html;
         if (s.status === 'running') { clearTimeout(prevTimer); prevTimer = setTimeout(() => refreshPreviews().catch(() => {}), 10000); }
       }

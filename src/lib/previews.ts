@@ -55,7 +55,23 @@ export function previewsConfigured(): boolean {
 
 const MODEL = () => env('ANTHROPIC_MODEL') || 'claude-sonnet-5';
 const SEARCHES_PER_MATCHUP = 6;
-const CONCURRENCY = 3;
+// Sequential on purpose: a fresh API key has tight per-minute token limits, and web search results
+// make each call input-heavy. Six matchups still finish well inside the 15-minute background limit.
+const CONCURRENCY = 1;
+
+/**
+ * Strip citation markup the model sometimes leaves in tool-call text when it quotes web results
+ * (`<cite index="14-1">…</cite>`, occasionally with parentheses instead of angle brackets).
+ */
+export function cleanText(s: string | null | undefined): string {
+  return String(s ?? '')
+    .replace(/<\/?cite\b[^>]*>/gi, '')
+    .replace(/[(\[]cite\b[^)\]>]*[)\]>]/gi, '')
+    .replace(/[(\[]\/cite[)\]]/gi, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ +([.,;:!?])/g, '$1')
+    .trim();
+}
 
 /** First sentence or two of the preview body, for teaser cards. */
 export function teaser(body: string, max = 230): string {
@@ -199,7 +215,9 @@ Output requirements (send them via the submit_preview tool when you are done res
 - keyPlayers: 2 per side, each with one crisp line on why they matter this week.
 - prediction: the winner, a win percentage (as a whole number 50–90), and 1–2 sentences of reasoning.
 - bold: one bold prediction for the matchup — specific and fun.
-- sources: the web pages you actually relied on for NFL context (title + url). Include every page you used.`;
+- sources: the web pages you actually relied on for NFL context (title + url). Include every page you used.
+
+Write everything in the tool input as plain prose in your own words. Do not paste search-result text verbatim and do not include citation tags, footnote markers, or any markup inside the preview fields — the sources list is where credit goes.`;
 
 const SUBMIT_TOOL: Anthropic.Tool = {
   name: 'submit_preview',
@@ -269,14 +287,14 @@ async function generateOne(client: Anthropic, ctx: Ctx, m: Matchup): Promise<AiP
       const sources = new Map<string, string>();
       for (const s of input.sources ?? []) if (s?.url) sources.set(String(s.url), String(s.title || s.url));
       for (const [url, title] of cited) if (!sources.has(url)) sources.set(url, title);
-      const clean = (list: any[]) => (Array.isArray(list) ? list : []).slice(0, 3).map((p) => ({ name: String(p?.name ?? ''), pos: String(p?.pos ?? ''), why: String(p?.why ?? '') })).filter((p) => p.name);
+      const clean = (list: any[]) => (Array.isArray(list) ? list : []).slice(0, 3).map((p) => ({ name: cleanText(p?.name), pos: cleanText(p?.pos), why: cleanText(p?.why) })).filter((p) => p.name);
       return {
         ...base,
-        headline: String(input.headline ?? '').trim().replace(/\.$/, ''),
-        body: String(input.body ?? '').trim(),
+        headline: cleanText(input.headline).replace(/\.$/, ''),
+        body: cleanText(input.body),
         keyPlayers: { home: clean(input.keyPlayers?.home), away: clean(input.keyPlayers?.away) },
-        prediction: { winnerId, winProb: prob, reasoning: String(input.prediction?.reasoning ?? '').trim() },
-        bold: String(input.bold ?? '').trim(),
+        prediction: { winnerId, winProb: prob, reasoning: cleanText(input.prediction?.reasoning) },
+        bold: cleanText(input.bold),
         sources: [...sources].map(([url, title]) => ({ url, title })).slice(0, 12),
       };
     }
@@ -339,13 +357,22 @@ export async function generatePreviews(opts: { week?: number } = {}): Promise<Ge
     if (h?.games?.length) history.push(h);
   }
   const ctx: Ctx = { snap, derived, rankings, draft, week, history };
-  const client = new Anthropic({ apiKey: env('ANTHROPIC_API_KEY'), maxRetries: 2 });
+  const client = new Anthropic({ apiKey: env('ANTHROPIC_API_KEY'), maxRetries: 4 });
 
   const previews = await mapLimit(matchups, CONCURRENCY, async (m) => {
-    try {
-      return await generateOne(client, ctx, m);
-    } catch (e: any) {
-      const msg = e?.message ?? String(e);
+    let lastErr: any = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        return await generateOne(client, ctx, m);
+      } catch (e: any) {
+        lastErr = e;
+        console.error(`preview attempt ${attempt + 1} failed for matchup ${m.id}:`, e?.message ?? e);
+        await new Promise((r) => setTimeout(r, 20_000)); // let per-minute limits breathe before retrying
+      }
+    }
+    {
+      const e = lastErr;
+      const msg = e?.status ? `${e.status} ${e?.message ?? ''}`.trim() : (e?.message ?? String(e));
       console.error(`preview failed for matchup ${m.id}:`, msg);
       // Keep last week's good copy for this matchup if we have one, but flag the failure.
       const old = previous?.previews.find((p) => p.matchupId === m.id && !p.error);

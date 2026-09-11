@@ -4,6 +4,7 @@ import type { AiPreview } from '../lib/previews';
 import type { Snapshot } from '../lib/types';
 import TeamLogo from './TeamLogo.astro';
 import { teamById, timeAgo } from '../lib/format';
+import { cleanText } from '../lib/previews';
 interface Props {
   p: AiPreview;
   snap: Snapshot;
@@ -14,7 +15,7 @@ const home = teamById(snap, p.homeId)!;
 const away = teamById(snap, p.awayId)!;
 const winner = teamById(snap, p.prediction.winnerId) ?? home;
 const loser = winner.id === home.id ? away : home;
-const paragraphs = p.body.split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean);
+const paragraphs = cleanText(p.body).split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean);
 const sides = [
   { t: home, players: p.keyPlayers.home },
   { t: away, players: p.keyPlayers.away },
@@ -23,7 +24,7 @@ const sides = [
 
 <article class="preview-article">
   <div class="eyebrow">Week {p.week} preview · {home.abbrev} vs {away.abbrev}</div>
-  <h2 class="preview-headline">{p.headline}</h2>
+  <h2 class="preview-headline">{cleanText(p.headline)}</h2>
   {p.error && <div class="msg tiny" style="background:rgba(245,196,81,.12);color:#ffe4a1;margin-bottom:12px">This is last run's copy — the latest regeneration failed for this matchup.</div>}
   <div class="preview-body">{paragraphs.map((para) => <p>{para}</p>)}</div>
 
@@ -32,7 +33,7 @@ const sides = [
       <div class:list={['preview-side', { me: me === s.t.id }]}>
         <div class="flex" style="gap:8px;margin-bottom:8px"><TeamLogo team={s.t} size="sm" /><b>{s.t.name}</b><span class="tiny dim">players to watch</span></div>
         {s.players.map((k) => (
-          <div class="preview-player"><b>{k.name}</b> <span class="tiny dim">{k.pos}</span><div class="small muted">{k.why}</div></div>
+          <div class="preview-player"><b>{k.name}</b> <span class="tiny dim">{k.pos}</span><div class="small muted">{cleanText(k.why)}</div></div>
         ))}
       </div>
     ))}
@@ -42,12 +43,12 @@ const sides = [
     <div class="preview-call">
       <div class="tiny dim" style="letter-spacing:.1em;text-transform:uppercase;font-weight:700">The pick</div>
       <div class="flex" style="gap:10px;margin:6px 0"><TeamLogo team={winner} size="sm" /><span class="preview-pick">{winner.name}</span><span class="pill green">{p.prediction.winProb}%</span></div>
-      <div class="small muted">{p.prediction.reasoning}</div>
+      <div class="small muted">{cleanText(p.prediction.reasoning)}</div>
       <div class="tiny dim" style="margin-top:6px">{loser.abbrev} {100 - p.prediction.winProb}%</div>
     </div>
     <div class="preview-call bold">
       <div class="tiny gold" style="letter-spacing:.1em;text-transform:uppercase;font-weight:700">Bold prediction</div>
-      <div class="small" style="margin-top:6px">{p.bold}</div>
+      <div class="small" style="margin-top:6px">{cleanText(p.bold)}</div>
     </div>
   </div>
 
