@@ -1,0 +1,17 @@
+---
+/** Headline + first sentence or two of an AI preview, linking to the full column. */
+import type { AiPreview } from '../lib/previews';
+import { teaser } from '../lib/previews';
+interface Props {
+  p: AiPreview;
+  compact?: boolean;
+}
+const { p, compact = false } = Astro.props;
+const href = `/matchups/${p.matchupId}`;
+---
+
+<div class="preview-teaser">
+  <div class="h"><a href={href}>{p.headline}</a></div>
+  {!compact && <div class="t">{teaser(p.body)}</div>}
+  <a class="more" href={href}>Read the full preview →</a>
+</div>

@@ -29,6 +29,12 @@ import Base from '../layouts/Base.astro';
           <div class="flex"><button class="btn" id="cookie-btn">Test & save</button><button class="btn sm secondary" id="cookie-reset" title="Go back to the ESPN_S2 environment variable">Use env var instead</button><span class="tiny" id="cookie-msg"></span></div>
         </div>
         <details class="section"><summary>Sync log</summary><ul id="log" class="tiny" style="padding-left:18px;margin:8px 0 0;color:var(--muted)"></ul></details>
+        <div class="section" style="margin-top:18px">
+          <div class="flex between"><h3 style="margin:0">AI matchup previews</h3><button class="btn sm" id="prev-btn">Regenerate previews</button></div>
+          <p class="small muted">Written automatically every Wednesday at 6 AM Pacific for the current week. Regenerate if something looks off or news breaks late — it takes a few minutes and replaces this week's previews when it finishes.</p>
+          <div id="prev-status" class="small"></div>
+          <div class="flex" style="margin-top:8px;gap:8px;align-items:center"><span class="tiny dim">Week</span><input id="prev-week" type="number" min="1" max="18" style="width:70px" placeholder="current" /><span class="tiny" id="prev-msg"></span></div>
+        </div>
         <details class="section"><summary>Storage check</summary><p class="tiny muted" style="margin:8px 0">Tests whether this deploy can read and write the site's data store (Netlify Blobs).</p><button class="btn sm secondary" id="diag-btn">Run check</button><pre id="diag-out" class="tiny" style="white-space:pre-wrap;margin:8px 0 0;color:var(--muted)"></pre></details>
       </div>
 
@@ -88,7 +94,33 @@ import Base from '../layouts/Base.astro';
         if (lcur) lsel.value = lcur;
         $('logo-grid').innerHTML = state.teams.map((t) => `<div class="flex" style="gap:8px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px">${t.logoOk ? `<img class="logo" src="${t.logo}?v=${Date.now()}" alt="">` : '<span class="logo logo-fallback">?</span>'}<div class="tiny"><b>${t.name}</b><div class="dim">${t.override ? 'override' : t.logoOk ? 'from ESPN' : 'missing'}</div></div></div>`).join('');
       }
-      async function refresh() { state = await call('state'); render(); }
+      async function refresh() { state = await call('state'); render(); refreshPreviews().catch(() => {}); }
+      let prevTimer = null;
+      async function refreshPreviews() {
+        const week = Number($('prev-week').value) || undefined;
+        const r = await call('previews-status', { week });
+        const box = $('prev-status');
+        if (!r.configured) { box.innerHTML = '<span class="red">ANTHROPIC_API_KEY is not set in Netlify environment variables — previews cannot be generated.</span>'; return; }
+        const s = r.set;
+        if (!s) { box.innerHTML = `<span class="dim">No previews for week ${r.week} yet.</span>`; return; }
+        const when = (iso) => iso ? new Date(iso).toLocaleString() : '—';
+        let html = `<b>Week ${r.week}:</b> `;
+        if (s.status === 'running') html += `<span class="gold">generating…</span> started ${when(s.startedAt)}`;
+        else if (s.status === 'ready') html += `<span class="green">ready</span> · ${s.count} of ${s.total} previews · finished ${when(s.finishedAt)} · ${s.model}`;
+        else html += `<span class="red">failed</span> · ${when(s.finishedAt)}`;
+        if (s.error) html += `<div class="tiny red" style="margin-top:4px">${s.error}</div>`;
+        box.innerHTML = html;
+        if (s.status === 'running') { clearTimeout(prevTimer); prevTimer = setTimeout(() => refreshPreviews().catch(() => {}), 10000); }
+      }
+      $('prev-btn').addEventListener('click', async () => {
+        const week = Number($('prev-week').value) || undefined;
+        if (!confirm(`Regenerate ${week ? 'week ' + week : "this week's"} previews now? This calls the Anthropic API (a few cents).`)) return;
+        $('prev-btn').disabled = true;
+        try { await call('previews', { week }); flash('prev-msg', 'Started — this takes a few minutes.', true); setTimeout(() => refreshPreviews().catch(() => {}), 3000); }
+        catch (e) { flash('prev-msg', e.message, false); }
+        $('prev-btn').disabled = false;
+      });
+      $('prev-week').addEventListener('change', () => refreshPreviews().catch(() => {}));
       async function unlock() {
         key = $('pass').value || key;
         try { await refresh(); try { sessionStorage.setItem('wsb-admin', key); } catch {} $('login').hidden = true; $('panel').hidden = false; }

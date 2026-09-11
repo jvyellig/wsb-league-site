@@ -1,0 +1,72 @@
+---
+import Base from '../../layouts/Base.astro';
+import MatchupCard from '../../components/MatchupCard.astro';
+import MatchupDetail, { type DetailSide } from '../../components/MatchupDetail.astro';
+import PreviewArticle from '../../components/PreviewArticle.astro';
+import { getBox, loadAll } from '../../lib/store';
+import { getPreviewSet } from '../../lib/previews';
+import { teamById } from '../../lib/format';
+
+const { snapshot: snap } = await loadAll();
+const id = Number(Astro.params.id);
+const m = snap?.schedule.find((x) => x.id === id) ?? null;
+if (!snap || !m || !m.away) return Astro.redirect('/matchups');
+
+const current = snap.currentMatchupPeriod;
+const week = m.week;
+const me = Astro.locals.teamId || null;
+const home = teamById(snap, m.home.teamId)!;
+const away = teamById(snap, m.away.teamId)!;
+const set = await getPreviewSet(snap.season, week);
+const preview = set?.previews.find((p) => p.matchupId === id && p.body) ?? null;
+const others = set?.previews.filter((p) => p.matchupId !== id && p.body) ?? [];
+const otherName = (p: (typeof others)[number]) => `${teamById(snap, p.homeId)?.abbrev} vs ${teamById(snap, p.awayId)?.abbrev}`;
+
+// Player-level detail, same rules as /matchups
+const box = week < current ? await getBox(week) : null;
+function side(teamId: number): DetailSide | null {
+  const team = teamById(snap, teamId);
+  if (!team) return null;
+  if (week === current) return { team, players: team.roster.map((p) => ({ ...p, points: p.actualWeek, proj: p.projWeek })) };
+  const b = box?.teams[String(teamId)];
+  return b ? { team, players: b.players } : null;
+}
+const dHome = side(home.id);
+const dAway = side(away.id);
+const title = preview ? preview.headline : `${home.name} vs ${away.name}`;
+---
+
+<Base title={`${title} · Week ${week}`}>
+  <div class="page-head">
+    <div>
+      <div class="eyebrow"><a href={`/matchups?week=${week}`}>← Week {week} matchups</a></div>
+      <h1>{home.name} <span class="dim">vs</span> {away.name}</h1>
+    </div>
+  </div>
+
+  <div class="card">
+    {preview ? (
+      <PreviewArticle p={preview} snap={snap} me={me} />
+    ) : (
+      <div>
+        <div class="eyebrow">Week {week} preview</div>
+        <p class="muted" style="margin:6px 0 0">
+          {set?.status === 'running' ? `This preview is being written right now — check back in a few minutes.` : `This week's preview isn't available yet.`}
+        </p>
+      </div>
+    )}
+  </div>
+  <div class="card">
+    <MatchupCard m={m} snap={snap} live={week === current} me={me} />
+    {dHome && dAway && <MatchupDetail home={dHome} away={dAway} live={week === current} me={me} />}
+  </div>
+
+  {others.length > 0 && (
+    <div class="section">
+      <div class="card-head"><h2>Other week {week} previews</h2></div>
+      <div class="flex" style="flex-wrap:wrap;gap:8px">
+        {others.map((p) => <a class="pill" href={`/matchups/${p.matchupId}`}>{otherName(p)} · {p.headline}</a>)}
+      </div>
+    </div>
+  )}
+</Base>

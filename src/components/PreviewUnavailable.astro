@@ -1,0 +1,18 @@
+---
+/** Friendly error state when a week's AI previews haven't been generated (or the run failed). */
+import type { PreviewSet } from '../lib/previews';
+interface Props {
+  set: PreviewSet | null;
+  week: number;
+  admin?: boolean;
+}
+const { set, week, admin = false } = Astro.props;
+const running = set?.status === 'running' && !set.previews.length;
+---
+
+<div class="preview-teaser">
+  <div class="t">
+    {running ? `Week ${week}'s previews are being written right now — check back in a few minutes.` : `This week's preview isn't available yet.`}
+    {admin && set?.error && <span class="red"> ({set.error})</span>}
+  </div>
+</div>

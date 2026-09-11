@@ -3,7 +3,10 @@ import Base from '../layouts/Base.astro';
 import MatchupCard from '../components/MatchupCard.astro';
 import TeamLogo from '../components/TeamLogo.astro';
 import MatchupDetail, { type DetailSide } from '../components/MatchupDetail.astro';
+import PreviewTeaser from '../components/PreviewTeaser.astro';
+import PreviewUnavailable from '../components/PreviewUnavailable.astro';
 import { getBox, loadAll } from '../lib/store';
+import { getPreviewSet } from '../lib/previews';
 import { fmt1, teamById } from '../lib/format';
 import type { Matchup } from '../lib/types';
 
@@ -17,6 +20,10 @@ const isMine = (m: { home: { teamId: number }; away: { teamId: number } | null }
 const matchups = snap ? [...snap.schedule.filter((m) => m.week === week)].sort((a, b) => Number(isMine(b)) - Number(isMine(a))) : [];
 const previews = week === current ? [...(derived?.previews ?? [])].sort((a, b) => Number(isMine(matchups.find((m) => m.id === b.matchupId)!)) - Number(isMine(matchups.find((m) => m.id === a.matchupId)!))) : [];
 const isFuture = week > current;
+
+// AI previews for this week (written once a week; never generated on page load)
+const previewSet = snap ? await getPreviewSet(snap.season, week) : null;
+const previewFor = (m: Matchup) => previewSet?.previews.find((p) => p.matchupId === m.id && p.body) ?? null;
 
 // Player-level detail: live rosters for the current week, the frozen box score for completed weeks.
 const box = snap && week < current ? await getBox(week) : null;
@@ -62,6 +69,10 @@ function detail(m: Matchup) {
             {p.gameOfWeek && <div class="tiny gold" style="font-weight:700;letter-spacing:.1em;margin-bottom:8px">★ GAME OF THE WEEK</div>}
             <MatchupCard m={m} snap={snap} live me={me} />
             {(() => {
+              const pv = previewFor(m);
+              return pv ? <PreviewTeaser p={pv} /> : away && week === current ? <PreviewUnavailable set={previewSet} week={week} /> : null;
+            })()}
+            {(() => {
               const d = detail(m);
               return d ? <MatchupDetail home={d.home} away={d.away} live me={me} /> : null;
             })()}
@@ -95,10 +106,12 @@ function detail(m: Matchup) {
     <div class:list={['grid', isFuture ? 'grid-3' : 'grid-2']}>
       {matchups.map((m) => {
         const d = detail(m);
-        return d ? (
+        const pv = previewFor(m);
+        return d || pv ? (
           <div class:list={['card', { me: isMine(m) }]}>
             <MatchupCard m={m} snap={snap} live={week === current} me={me} />
-            <MatchupDetail home={d.home} away={d.away} live={week === current} me={me} />
+            {pv && <PreviewTeaser p={pv} compact />}
+            {d && <MatchupDetail home={d.home} away={d.away} live={week === current} me={me} />}
           </div>
         ) : (
           <MatchupCard m={m} snap={snap} live={week === current} me={me} />

@@ -4,6 +4,7 @@ import { db, env, getNotes, getSnapshot, getStatus, KEYS } from '../../../lib/st
 import { runSync } from '../../../lib/sync';
 import { fetchLeague } from '../../../lib/espn';
 import type { LogoIndex } from '../../../lib/logos';
+import { getPreviewSet, previewsConfigured, triggerPreviews } from '../../../lib/previews';
 
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
@@ -93,6 +94,24 @@ export const POST: APIRoute = async ({ params, request }) => {
       await db.del(KEYS.logo(teamId));
       await runSync(); // re-fetches from ESPN
       return json({ ok: true });
+    }
+    case 'previews': {
+      // Kick off the background generator; the page polls 'previews-status' for progress.
+      if (!previewsConfigured()) return json({ error: 'ANTHROPIC_API_KEY is not set in Netlify environment variables.' }, 400);
+      const week = body.week ? Number(body.week) : undefined;
+      const r = await triggerPreviews({ week });
+      return json(r, r.ok ? 202 : 502);
+    }
+    case 'previews-status': {
+      const snap = await getSnapshot();
+      if (!snap) return json({ configured: previewsConfigured(), set: null });
+      const week = body.week ? Number(body.week) : snap.currentMatchupPeriod;
+      const set = await getPreviewSet(snap.season, week, true);
+      return json({
+        configured: previewsConfigured(),
+        week,
+        set: set ? { status: set.status, startedAt: set.startedAt, finishedAt: set.finishedAt, model: set.model, error: set.error, count: set.previews.filter((p) => !p.error).length, total: set.previews.length, failures: set.previews.filter((p) => p.error).map((p) => ({ matchupId: p.matchupId, error: p.error })) } : null,
+      });
     }
     case 'diag': {
       // Blob storage self-test: surfaces the real error when reads/writes fail

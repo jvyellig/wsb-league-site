@@ -3,7 +3,9 @@ import Base from '../layouts/Base.astro';
 import TeamCell from '../components/TeamCell.astro';
 import MatchupCard from '../components/MatchupCard.astro';
 import TeamLogo from '../components/TeamLogo.astro';
+import PreviewTeaser from '../components/PreviewTeaser.astro';
 import { loadAll } from '../lib/store';
+import { getPreviewSet, type AiPreview } from '../lib/previews';
 import { fmt1, fmtDate, movement, teamById, record } from '../lib/format';
 
 const { snapshot: snap, rankings, derived, status } = await loadAll();
@@ -20,6 +22,8 @@ const latestAwardsWeek = Object.keys(rankings.awards).map(Number).sort((a, b) =>
 const awards = latestAwardsWeek !== undefined ? rankings.awards[String(latestAwardsWeek)] : [];
 const inSeason = snap && week <= snap.regularSeasonWeeks;
 const txVerb: Record<string, string> = { WAIVER: 'claimed', FREEAGENT: 'added', TRADE: 'traded', DRAFT: 'drafted' };
+const previewSet = snap ? await getPreviewSet(snap.season, week) : null;
+const previews = thisWeek.map((m) => previewSet?.previews.find((p) => p.matchupId === m.id && p.body) ?? null).filter((p): p is AiPreview => !!p);
 ---
 
 <Base title="Home">
@@ -47,6 +51,29 @@ const txVerb: Record<string, string> = { WAIVER: 'claimed', FREEAGENT: 'added', 
         <div class="grid grid-3">
           {thisWeek.map((m) => <MatchupCard m={m} snap={snap} live gotw={m.id === gotwId} me={me} />)}
         </div>
+      </section>
+
+      <section class="section">
+        <div class="card-head">
+          <h2>Week {week} previews</h2>
+          <span class="sub">From the league's AI columnist · fresh every Wednesday</span>
+        </div>
+        {previews.length ? (
+          <div class="grid grid-3">
+            {previews.map((p) => {
+              const h = teamById(snap, p.homeId)!;
+              const a = teamById(snap, p.awayId)!;
+              return (
+                <div class:list={['card', { me: me === p.homeId || me === p.awayId }]}>
+                  <div class="flex" style="gap:8px"><TeamLogo team={h} size="sm" /><TeamLogo team={a} size="sm" /><span class="tiny dim">{h.abbrev} vs {a.abbrev}</span></div>
+                  <PreviewTeaser p={p} />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div class="card"><p class="muted" style="margin:0">{previewSet?.status === 'running' ? 'This week\'s previews are being written right now — check back in a few minutes.' : "This week's previews aren't available yet."}</p></div>
+        )}
       </section>
 
       <div class="grid grid-2 section">

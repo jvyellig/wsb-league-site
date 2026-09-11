@@ -273,3 +273,25 @@ details summary { cursor: pointer; color: var(--accent-2); font-weight: 600; }
 .drill-bench-label { margin-top: 8px; padding: 4px 0; letter-spacing: 0.1em; text-transform: uppercase; font-weight: 700; border-bottom: 1px solid var(--border); }
 /* An expanded breakdown takes the full row so both lineups fit side by side. */
 .grid > .card:has(.drill[open]) { grid-column: 1 / -1; }
+
+/* AI matchup previews */
+.preview-article { max-width: 760px; }
+.preview-headline { font-family: var(--font-display); font-size: 1.7rem; line-height: 1.15; margin: 4px 0 14px; }
+.preview-body p { font-size: 1.02rem; line-height: 1.65; color: var(--text); margin: 0 0 14px; }
+.preview-players { margin-top: 8px; gap: 14px; }
+.preview-side { background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.preview-side.me { border-color: rgba(245, 196, 81, 0.45); }
+.preview-player { padding: 6px 0; border-top: 1px solid var(--border); }
+.preview-calls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+@media (max-width: 600px) { .preview-calls { grid-template-columns: 1fr; } }
+.preview-call { background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.preview-call.bold { border-color: rgba(245, 196, 81, 0.35); background: rgba(245, 196, 81, 0.06); }
+.preview-pick { font-family: var(--font-display); font-weight: 700; font-size: 1.1rem; }
+.preview-foot { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--border); line-height: 1.5; }
+.preview-foot a { color: var(--dim); text-decoration: underline; }
+.preview-teaser { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 10px; }
+.preview-teaser .h { font-family: var(--font-display); font-weight: 700; font-size: 1.02rem; line-height: 1.25; }
+.preview-teaser .h a { color: var(--text); }
+.preview-teaser .t { color: var(--muted); font-size: 0.88rem; margin-top: 4px; line-height: 1.5; }
+.preview-teaser .more { display: inline-block; margin-top: 6px; font-size: 0.82rem; font-weight: 600; }
+.grid > .card + .card { margin-top: 0; }
