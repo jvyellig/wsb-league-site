@@ -30,6 +30,12 @@ interface KV {
 
 let kv: KV | null = null;
 
+/** The site's Netlify id (not a secret) — lets explicit Blobs credentials work even if SITE_ID isn't injected at runtime. */
+const DEFAULT_SITE_ID = 'd34155a9-ab21-4e3c-8b69-8b2274e3c91b';
+
+/** Last data-store failure seen by this function instance, so pages can say "storage unreachable" instead of "no data". */
+export const storeHealth: { lastError: string | null; lastErrorAt: string | null; lastEdgeError: string | null; reads: number; failures: number; edgeFailures: number } = { lastError: null, lastErrorAt: null, lastEdgeError: null, reads: 0, failures: 0, edgeFailures: 0 };
+
 export function env(name: string): string | undefined {
   const g: any = globalThis as any;
   try {
@@ -83,8 +89,8 @@ async function blobKV(): Promise<KV> {
   // deploy paths have shown up without them), NETLIFY_BLOBS_TOKEN (a Netlify personal access token)
   // + SITE_ID lets the client authenticate explicitly.
   const token = env('NETLIFY_BLOBS_TOKEN');
-  const siteID = env('SITE_ID');
-  const explicit = token && siteID ? { siteID, token } : {};
+  const siteID = env('SITE_ID') || DEFAULT_SITE_ID;
+  const explicit = token ? { siteID, token } : {};
   const eventual = getStore({ name: 'league', ...explicit });
   const strong = getStore({ name: 'league', consistency: 'strong', ...explicit });
   return {
@@ -112,15 +118,29 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export const db = {
   /** Read a JSON blob. Retries once on a transient failure; `strong` forces a read-after-write-consistent read. */
   async get<T = any>(key: string, opts: { strong?: boolean; throwOnError?: boolean } = {}): Promise<T | null> {
-    const store = await getKV();
+    storeHealth.reads++;
     for (let attempt = 0; ; attempt++) {
       try {
-        return await store.get(key, opts.strong);
-      } catch (e) {
+        const store = await getKV(); // can itself throw if the Blobs environment is missing
+        if (opts.strong) return await store.get(key, true);
+        // Eventual (edge-cached) reads are the fast path, but on some deploys that path comes up
+        // empty while direct reads work fine. Never trust a miss from the edge without checking.
+        try {
+          const v = await store.get(key, false);
+          if (v !== null && v !== undefined) return v;
+        } catch (e: any) {
+          storeHealth.edgeFailures++;
+          storeHealth.lastEdgeError = `${e?.name ?? 'Error'}: ${e?.message ?? e}`.slice(0, 300);
+        }
+        return await store.get(key, true);
+      } catch (e: any) {
         if (attempt < 2) {
           await sleep(150 * (attempt + 1));
           continue;
         }
+        storeHealth.failures++;
+        storeHealth.lastError = `${e?.name ?? 'Error'}: ${e?.message ?? e}`.slice(0, 300);
+        storeHealth.lastErrorAt = new Date().toISOString();
         console.error(`blob read failed for ${key}:`, e);
         if (opts.throwOnError) throw e;
         return null;

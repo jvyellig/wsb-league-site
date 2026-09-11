@@ -1,6 +1,6 @@
 ---
 import '../styles/global.css';
-import { getSnapshot, getStatus } from '../lib/store';
+import { getSnapshot, getStatus, storeHealth } from '../lib/store';
 import { timeAgo, fmtDate } from '../lib/format';
 
 interface Props {
@@ -92,7 +92,7 @@ if (!noCache) {
     )}
     {!snapshot && !readHiccup && (
       <div class="banner warn">
-        <div class="wrap"><strong>No league data yet.</strong><span>The first ESPN sync hasn't run. Trigger one from <a href="/admin">/admin</a>.</span></div>
+        <div class="wrap">{storeHealth.lastError ? <><strong>Can't reach the site's data store right now.</strong><span>The data is safe; this deploy just can't read it. Try again in a minute, or check <a href="/api/health">/api/health</a>.</span></> : <><strong>No league data yet.</strong><span>The first ESPN sync hasn't run. Trigger one from <a href="/admin">/admin</a>.</span></>}</div>
       </div>
     )}
     {readHiccup && (
