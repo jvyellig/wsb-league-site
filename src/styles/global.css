@@ -295,3 +295,23 @@ details summary { cursor: pointer; color: var(--accent-2); font-weight: 600; }
 .preview-teaser .t { color: var(--muted); font-size: 0.88rem; margin-top: 4px; line-height: 1.5; }
 .preview-teaser .more { display: inline-block; margin-top: 6px; font-size: 0.82rem; font-weight: 600; }
 .grid > .card + .card { margin-top: 0; }
+
+/* Weekly recap */
+.recap-headline { font-family: var(--font-display); font-size: 2.2rem; line-height: 1.1; margin: 4px 0 14px; max-width: 900px; }
+@media (max-width: 600px) { .recap-headline { font-size: 1.6rem; } }
+.recap-intro { max-width: 760px; }
+.recap-intro p { font-size: 1.05rem; line-height: 1.65; margin: 0 0 12px; }
+.recap-callouts { margin: 18px 0 8px; }
+.recap-callout { padding: 14px 16px; }
+.recap-games { display: grid; gap: 16px; margin-top: 16px; }
+.recap-game { padding: 16px 18px; }
+.recap-game-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 22px; align-items: start; }
+@media (max-width: 800px) { .recap-game-grid { grid-template-columns: 1fr; } }
+.recap-game-head { font-family: var(--font-display); font-size: 1.25rem; line-height: 1.2; margin: 2px 0 8px; }
+.recap-blurb { line-height: 1.6; margin: 0 0 12px; }
+.recap-key { padding: 6px 10px; border-left: 3px solid var(--gold); background: rgba(245, 196, 81, 0.06); border-radius: 0 6px 6px 0; margin-bottom: 6px; font-size: 0.9rem; }
+.recap-performer { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; padding: 5px 0; border-top: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.88rem; align-items: start; }
+.recap-foot { margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--border); }
+.takeover-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; margin-bottom: 18px; font-size: 0.9rem; }
+.recap-list { display: grid; gap: 12px; }
+.recap-list a.card { display: block; color: inherit; }

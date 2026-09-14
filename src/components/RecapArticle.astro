@@ -1,0 +1,80 @@
+---
+/** Full weekly recap: headline, intro, the three callouts, then a blurb per matchup with the final and top performers. */
+import type { Recap } from '../lib/recaps';
+import type { Snapshot } from '../lib/types';
+import MatchupCard from './MatchupCard.astro';
+import TeamLogo from './TeamLogo.astro';
+import { fmt1, teamById, timeAgo } from '../lib/format';
+interface Props {
+  r: Recap;
+  snap: Snapshot;
+  me?: number | null;
+}
+const { r, snap, me = null } = Astro.props;
+const isMine = (m: { homeId: number; awayId: number }) => !!me && (m.homeId === me || m.awayId === me);
+const ordered = [...r.matchups].sort((a, b) => Number(isMine(b)) - Number(isMine(a)));
+const intro = r.intro.split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean);
+---
+
+<article class="recap">
+  <div class="eyebrow">Week {r.week} recap</div>
+  <h1 class="recap-headline">{r.headline}</h1>
+  <div class="recap-intro">{intro.map((p) => <p>{p}</p>)}</div>
+
+  {r.callouts.length > 0 && (
+    <div class="grid grid-3 recap-callouts">
+      {r.callouts.map((c) => {
+        const t = teamById(snap, c.teamId);
+        return (
+          <div class:list={['card', 'recap-callout', { me: me === c.teamId }]}>
+            <div class="tiny dim" style="letter-spacing:.1em;text-transform:uppercase;font-weight:700">{c.emoji} {c.title}</div>
+            <div class="flex" style="gap:10px;margin:8px 0 4px">{t && <TeamLogo team={t} size="sm" />}<b>{t?.name}</b><span class="pill gold">{c.value}</span></div>
+            <div class="tiny dim">{c.detail}</div>
+            {c.quip && <div class="small muted" style="margin-top:8px">{c.quip}</div>}
+          </div>
+        );
+      })}
+    </div>
+  )}
+
+  <div class="recap-games">
+    {ordered.map((g) => {
+      const m = snap.schedule.find((x) => x.id === g.matchupId);
+      return (
+        <div class:list={['card', 'recap-game', { me: isMine(g) }]}>
+          <div class="recap-game-grid">
+            <div>
+              {m ? <MatchupCard m={m} snap={snap} me={me} /> : null}
+              {g.performers.length > 0 && (
+                <div class="recap-performers">
+                  <div class="tiny dim" style="letter-spacing:.1em;text-transform:uppercase;font-weight:700;margin:12px 0 6px">Top performers</div>
+                  {g.performers.map((p) => {
+                    const t = teamById(snap, p.teamId);
+                    return (
+                      <div class="recap-performer">
+                        <span class="drill-pts">{fmt1(p.points)}</span>
+                        <span><b>{p.name}</b> <span class="tiny dim">{p.pos} · {t?.abbrev}</span>{p.line && <div class="tiny dim">{p.line}</div>}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div>
+              <h3 class="recap-game-head">{g.headline}</h3>
+              <p class="recap-blurb">{g.blurb}</p>
+              {g.keys.length > 0 && (
+                <div class="recap-keys">
+                  <div class="tiny gold" style="letter-spacing:.1em;text-transform:uppercase;font-weight:700;margin-bottom:6px">Keys to the game</div>
+                  {g.keys.map((k) => <div class="recap-key">{k}</div>)}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    })}
+  </div>
+
+  <div class="tiny dim recap-foot">Written by the league's AI columnist {timeAgo(r.finishedAt)} from the final ESPN box scores. Every number above is real; the opinions are its own.</div>
+</article>

@@ -1,0 +1,32 @@
+---
+import Base from '../../layouts/Base.astro';
+import { getSnapshot } from '../../lib/store';
+import { getRecapIndex } from '../../lib/recaps';
+import { fmtDate } from '../../lib/format';
+
+const snap = await getSnapshot();
+const index = snap ? [...(await getRecapIndex(snap.season))].sort((a, b) => b.week - a.week) : [];
+---
+
+<Base title="Recaps">
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Archive</div>
+      <h1>Weekly recaps</h1>
+      <p>Every week's recap from the league's AI columnist, written Tuesday mornings from the final box scores.</p>
+    </div>
+  </div>
+  {!index.length ? (
+    <div class="empty">No recaps yet — the first one arrives the Tuesday after week 1 wraps up.</div>
+  ) : (
+    <div class="recap-list">
+      {index.map((e) => (
+        <a class="card" href={`/recaps/${e.week}`}>
+          <div class="eyebrow">Week {e.week}</div>
+          <div style="font-family:var(--font-display);font-weight:700;font-size:1.2rem">{e.headline}</div>
+          <div class="tiny dim" style="margin-top:4px">{fmtDate(e.finishedAt)}</div>
+        </a>
+      ))}
+    </div>
+  )}
+</Base>

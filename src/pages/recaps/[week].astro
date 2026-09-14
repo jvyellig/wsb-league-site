@@ -1,0 +1,29 @@
+---
+import Base from '../../layouts/Base.astro';
+import RecapArticle from '../../components/RecapArticle.astro';
+import { getSnapshot } from '../../lib/store';
+import { getRecap, getRecapIndex } from '../../lib/recaps';
+
+const snap = await getSnapshot();
+const week = Number(Astro.params.week);
+if (!snap || !week) return Astro.redirect('/recaps');
+const recap = await getRecap(snap.season, week);
+const ready = recap && recap.status === 'ready' && recap.headline;
+const index = [...(await getRecapIndex(snap.season))].sort((a, b) => a.week - b.week);
+const i = index.findIndex((e) => e.week === week);
+const prev = i > 0 ? index[i - 1] : null;
+const next = i >= 0 && i < index.length - 1 ? index[i + 1] : null;
+const me = Astro.locals.teamId || null;
+---
+
+<Base title={ready ? `${recap.headline} · Week ${week} recap` : `Week ${week} recap`}>
+  <div class="takeover-bar">
+    <span><a href="/recaps">← All recaps</a></span>
+    <span class="flex" style="gap:14px">{prev && <a href={`/recaps/${prev.week}`}>← Week {prev.week}</a>}{next && <a href={`/recaps/${next.week}`}>Week {next.week} →</a>}</span>
+  </div>
+  {ready ? (
+    <RecapArticle r={recap} snap={snap} me={me} />
+  ) : (
+    <div class="empty">{recap?.status === 'running' ? `The week ${week} recap is being written right now — check back in a minute.` : `There's no recap for week ${week}${recap?.status === 'error' ? ' yet — the last attempt didn’t go through' : ''}.`}</div>
+  )}
+</Base>

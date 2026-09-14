@@ -6,6 +6,8 @@ import TeamLogo from '../components/TeamLogo.astro';
 import PreviewTeaser from '../components/PreviewTeaser.astro';
 import { loadAll } from '../lib/store';
 import { getPreviewSet, type AiPreview } from '../lib/previews';
+import { recapTakeover } from '../lib/recaps';
+import RecapArticle from '../components/RecapArticle.astro';
 import { fmt1, fmtDate, movement, teamById, record } from '../lib/format';
 
 const { snapshot: snap, rankings, derived, status } = await loadAll();
@@ -22,13 +24,24 @@ const latestAwardsWeek = Object.keys(rankings.awards).map(Number).sort((a, b) =>
 const awards = latestAwardsWeek !== undefined ? rankings.awards[String(latestAwardsWeek)] : [];
 const inSeason = snap && week <= snap.regularSeasonWeeks;
 const txVerb: Record<string, string> = { WAIVER: 'claimed', FREEAGENT: 'added', TRADE: 'traded', DRAFT: 'drafted' };
+// Weekly recap takeover: the newest recap owns the home page until this week's previews are out.
+// ?view=home always shows the regular page.
+const takeover = snap && Astro.url.searchParams.get('view') !== 'home' ? await recapTakeover(snap) : null;
 const previewSet = snap ? await getPreviewSet(snap.season, week) : null;
 const previews = thisWeek.map((m) => previewSet?.previews.find((p) => p.matchupId === m.id && p.body) ?? null).filter((p): p is AiPreview => !!p);
 ---
 
-<Base title="Home">
+<Base title={takeover ? `Week ${takeover.week} recap` : 'Home'}>
   {!snap ? (
     <div class="empty">Waiting for the first ESPN sync.</div>
+  ) : takeover ? (
+    <>
+      <div class="takeover-bar">
+        <span><b>Week {takeover.week} is in the books.</b> <span class="muted">The regular home page returns when this week's previews publish.</span></span>
+        <span class="flex" style="gap:14px"><a href="/recaps">Past recaps</a><a class="btn sm secondary" href="/?view=home">Regular home page →</a></span>
+      </div>
+      <RecapArticle r={takeover} snap={snap} me={me} />
+    </>
   ) : (
     <>
       <div class="page-head">

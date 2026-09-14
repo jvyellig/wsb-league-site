@@ -35,6 +35,12 @@ import Base from '../layouts/Base.astro';
           <div id="prev-status" class="small"></div>
           <div class="flex" style="margin-top:8px;gap:8px;align-items:center"><span class="tiny dim">Week</span><input id="prev-week" type="number" min="1" max="18" style="width:70px" placeholder="current" /><span class="tiny" id="prev-msg"></span></div>
         </div>
+        <div class="section" style="margin-top:18px">
+          <div class="flex between"><h3 style="margin:0">AI weekly recap</h3><button class="btn sm" id="recap-btn">Generate recap</button></div>
+          <p class="small muted">Written automatically Tuesday mornings once ESPN closes the week. It takes over the home page until Wednesday's previews publish. Regenerate here if it needs another take.</p>
+          <div id="recap-status" class="small"></div>
+          <div class="flex" style="margin-top:8px;gap:8px;align-items:center"><span class="tiny dim">Week</span><input id="recap-week" type="number" min="1" max="18" style="width:70px" placeholder="latest" /><span class="tiny" id="recap-msg"></span></div>
+        </div>
         <details class="section"><summary>Storage check</summary><p class="tiny muted" style="margin:8px 0">Tests whether this deploy can read and write the site's data store (Netlify Blobs).</p><button class="btn sm secondary" id="diag-btn">Run check</button><pre id="diag-out" class="tiny" style="white-space:pre-wrap;margin:8px 0 0;color:var(--muted)"></pre></details>
       </div>
 
@@ -94,7 +100,33 @@ import Base from '../layouts/Base.astro';
         if (lcur) lsel.value = lcur;
         $('logo-grid').innerHTML = state.teams.map((t) => `<div class="flex" style="gap:8px;background:var(--bg-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px">${t.logoOk ? `<img class="logo" src="${t.logo}?v=${Date.now()}" alt="">` : '<span class="logo logo-fallback">?</span>'}<div class="tiny"><b>${t.name}</b><div class="dim">${t.override ? 'override' : t.logoOk ? 'from ESPN' : 'missing'}</div></div></div>`).join('');
       }
-      async function refresh() { state = await call('state'); render(); refreshPreviews().catch(() => {}); }
+      async function refresh() { state = await call('state'); render(); refreshPreviews().catch(() => {}); refreshRecap().catch(() => {}); }
+      let recapTimer = null;
+      async function refreshRecap() {
+        const week = Number($('recap-week').value) || undefined;
+        const r = await call('recap-status', { week });
+        const box = $('recap-status');
+        if (!r.configured) { box.innerHTML = '<span class="red">ANTHROPIC_API_KEY is not set — recaps cannot be generated.</span>'; return; }
+        const s = r.recap;
+        if (!s) { box.innerHTML = `<span class="dim">No recap for week ${r.week} yet.${r.weeks && r.weeks.length ? ' Recaps exist for weeks ' + r.weeks.join(', ') + '.' : ''}</span>`; return; }
+        const when = (iso) => iso ? new Date(iso).toLocaleString() : '—';
+        let html = `<b>Week ${r.week}:</b> `;
+        if (s.status === 'running') html += `<span class="gold">writing…</span> started ${when(s.startedAt)}`;
+        else if (s.status === 'ready') html += `<span class="green">ready</span> · “${s.headline}” · ${when(s.finishedAt)} · <a href="/recaps/${r.week}">view</a>`;
+        else html += `<span class="red">failed</span> · ${when(s.finishedAt)}`;
+        if (s.error && s.status !== 'running') html += `<div class="tiny red" style="margin-top:4px">${s.error}</div>`;
+        box.innerHTML = html;
+        if (s.status === 'running') { clearTimeout(recapTimer); recapTimer = setTimeout(() => refreshRecap().catch(() => {}), 10000); }
+      }
+      $('recap-btn').addEventListener('click', async () => {
+        const week = Number($('recap-week').value) || undefined;
+        if (!confirm(`Generate the ${week ? 'week ' + week : 'latest'} recap now? This calls the Anthropic API (a few cents).`)) return;
+        $('recap-btn').disabled = true;
+        try { await call('recap', { week }); flash('recap-msg', 'Started — usually about a minute.', true); setTimeout(() => refreshRecap().catch(() => {}), 3000); }
+        catch (e) { flash('recap-msg', e.message, false); }
+        $('recap-btn').disabled = false;
+      });
+      $('recap-week').addEventListener('change', () => refreshRecap().catch(() => {}));
       let prevTimer = null;
       async function refreshPreviews() {
         const week = Number($('prev-week').value) || undefined;
