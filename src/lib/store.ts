@@ -85,23 +85,29 @@ async function blobKV(): Promise<KV> {
   const { getStore } = await import('@netlify/blobs');
   // Pages read with eventual consistency (fast, edge-cached); the sync/admin paths read strongly
   // so read-modify-write on status/rankings never works from a stale copy.
-  // Normally Netlify injects the Blobs credentials into the function runtime. As a safety net (some
-  // deploy paths have shown up without them), NETLIFY_BLOBS_TOKEN (a Netlify personal access token)
-  // + SITE_ID lets the client authenticate explicitly.
-  const token = env('NETLIFY_BLOBS_TOKEN');
-  const siteID = env('SITE_ID') || DEFAULT_SITE_ID;
-  const explicit = token ? { siteID, token } : {};
-  const eventual = getStore({ name: 'league', ...explicit });
-  const strong = getStore({ name: 'league', consistency: 'strong', ...explicit });
+  // Normally Netlify injects the Blobs credentials into the function runtime. As a safety net,
+  // NETLIFY_BLOBS_TOKEN (a Netlify personal access token) + SITE_ID lets the client authenticate explicitly.
+  //
+  // IMPORTANT: the injected credentials are a short-lived token. A store object created once and
+  // reused across requests keeps the token it was born with, and on a long-lived function instance
+  // that token expires ("Failed to decode token: Token expired") — every read then fails until the
+  // instance is recycled. That was the cause of the site's "blank page" outages. So we build a fresh
+  // store for every operation; it's a cheap object, and it always carries the current token.
+  const store = (strong: boolean) => {
+    const token = env('NETLIFY_BLOBS_TOKEN');
+    const siteID = env('SITE_ID') || DEFAULT_SITE_ID;
+    const explicit = token ? { siteID, token } : {};
+    return getStore({ name: 'league', ...(strong ? { consistency: 'strong' as const } : {}), ...explicit });
+  };
   return {
-    get: (key, useStrong = false) => (useStrong ? strong : eventual).get(key, { type: 'json' }),
+    get: (key, useStrong = false) => store(useStrong).get(key, { type: 'json' }),
     set: async (key, value) => {
-      await strong.setJSON(key, value);
+      await store(true).setJSON(key, value);
     },
-    del: (key) => strong.delete(key),
-    getBytes: (key) => eventual.get(key, { type: 'arrayBuffer' }),
+    del: (key) => store(true).delete(key),
+    getBytes: (key) => store(false).get(key, { type: 'arrayBuffer' }),
     setBytes: async (key, value) => {
-      await strong.set(key, value);
+      await store(true).set(key, value);
     },
   };
 }
